@@ -5,7 +5,7 @@ import "sort"
 // Frame is a snapshot of world state at a point in time.
 type Frame struct {
 	Agents *AgentStore
-	Env    *Grid // environment properties only (agent indices rebuilt via Grid.Rebuild)
+	Env    *Grid
 }
 
 func (f *Frame) Clone() *Frame {
@@ -28,7 +28,7 @@ type World struct {
 }
 
 func NewWorld(cfg EngineConfig) *World {
-	store := NewAgentStore(10000)
+	store := NewAgentStore(20000)
 	env := NewGrid(cfg.GridWidth, cfg.GridHeight)
 
 	f := &Frame{Agents: store, Env: env}
@@ -48,7 +48,6 @@ func NewWorld(cfg EngineConfig) *World {
 // RegisterSystem adds a system to the simulation pipeline.
 func (w *World) RegisterSystem(sys System) {
 	w.systems = append(w.systems, sys)
-	// Keep systems sorted by priority.
 	sort.Slice(w.systems, func(i, j int) bool {
 		return w.systems[i].Priority() < w.systems[j].Priority()
 	})
@@ -56,21 +55,14 @@ func (w *World) RegisterSystem(sys System) {
 
 // Tick advances the simulation by one time step.
 func (w *World) Tick() {
-	// 1. Clone current state to next.
 	w.Next = w.Curr.Clone()
-
-	// 2. Rebuild spatial grid from next (initial) agent positions.
 	w.Grid.Rebuild(w.Next.Agents)
 
-	// 3. Run all systems in priority order.
 	for _, sys := range w.systems {
 		sys.Tick(w)
 	}
 
-	// 4. Swap buffers.
 	w.Curr, w.Next = w.Next, w.Curr
-
-	// 5. Advance clock.
 	w.Clock.Advance()
 }
 
@@ -79,7 +71,7 @@ func (w *World) Run(ticks int64, snapshotEvery int) {
 	for range ticks {
 		w.Tick()
 		if snapshotEvery > 0 && w.Clock.Tick%int64(snapshotEvery) == 0 {
-			w.Stats.Snapshot(w.Curr, w.Clock.Tick, w.Clock.Year())
+			w.Stats.Snapshot(w.Curr, w.Next.Env, w.Clock.Tick, w.Clock.Year())
 		}
 	}
 }

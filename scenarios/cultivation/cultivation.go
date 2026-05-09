@@ -10,7 +10,7 @@ func (s *CultivationSystem) Priority() int { return 2 }
 
 func (s *CultivationSystem) Tick(w *engine.World) {
 	cfg := DefaultScenarioConfig()
-	agents := w.Next.Agents // write to next frame
+	agents := w.Next.Agents
 	env := w.Next.Env
 
 	for i := range agents.ID {
@@ -24,14 +24,21 @@ func (s *CultivationSystem) Tick(w *engine.World) {
 		}
 		rc := GetRealm(realm)
 
-		// Absorb qi from environment.
+		// --- Decrement breakthrough cooldown ---
+		if attrs.Num["breakthrough_cooldown"] > 0 {
+			attrs.Num["breakthrough_cooldown"]--
+		}
+
+		// --- Absorb qi from environment ---
 		x, y := agents.X[i], agents.Y[i]
-		spirit := env.GetEnv(x, y, "spirit_density")
-		absorb := spirit * attrs.Num["cultivation_speed"] * cfg.CultivationSpeed
+		cellIdx := y*env.Width + x
+		spirit := env.Cells[cellIdx].Env0
+		baseAbsorb := spirit * attrs.Num["cultivation_speed"] * cfg.CultivationSpeed
+		absorb := baseAbsorb * rc.CultSpeedMult // realm speed scaling
 		if absorb > spirit {
 			absorb = spirit
 		}
-		env.SetEnv(x, y, "spirit_density", spirit-absorb)
+		env.Cells[cellIdx].Env0 = spirit - absorb
 
 		attrs.Num["qi"] += absorb
 		qiMax := cfg.BaseQi * rc.QiMultiplier
@@ -40,20 +47,27 @@ func (s *CultivationSystem) Tick(w *engine.World) {
 			attrs.Num["qi"] = qiMax
 		}
 
-		// Breakthrough attempt.
+		// --- Breakthrough attempt ---
 		if rc.BreakthroughBase > 0 &&
-			attrs.Num["qi"] >= qiMax*cfg.BreakthroughQiFrac &&
-			w.RNG.Float64() < rc.BreakthroughBase {
+			attrs.Num["breakthrough_cooldown"] <= 0 &&
+			attrs.Num["qi"] >= qiMax*cfg.BreakthroughQiFrac {
 
-			attrs.Num["realm"] = float64(realm + 1)
-			attrs.Num["qi"] = qiMax * 0.5 // reset qi after breakthrough
-			newRC := GetRealm(realm + 1)
-			attrs.Num["lifespan"] = newRC.Lifespan
-			attrs.Num["combat_power"] = cfg.BaseQi * newRC.CombatMultiplier * (1 + attrs.Num["qi"]/qiMax)
-			w.Stats.RecordBreakthrough()
+			if w.RNG.Float64() < rc.BreakthroughBase {
+				// Success.
+				newRealm := realm + 1
+				attrs.Num["realm"] = float64(newRealm)
+				attrs.Num["qi"] = qiMax * 0.5
+				newRC := GetRealm(newRealm)
+				attrs.Num["lifespan"] = newRC.Lifespan
+				attrs.Num["combat_power"] = cfg.BaseQi * newRC.CombatMultiplier * (1 + attrs.Num["qi"]/(cfg.BaseQi*newRC.QiMultiplier))
+				w.Stats.RecordBreakthrough()
+			} else {
+				// Failure: enter cooldown.
+				attrs.Num["breakthrough_cooldown"] = float64(cfg.BreakthroughCD)
+			}
 		}
 
-		// Update combat power based on current qi.
+		// --- Update combat power ---
 		attrs.Num["combat_power"] = cfg.BaseQi * rc.CombatMultiplier * (1 + attrs.Num["qi"]/qiMax)
 	}
 }

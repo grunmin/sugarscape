@@ -5,43 +5,39 @@ import "github.com/runmin/sugarscape/engine"
 // EnvironmentSystem handles spirit energy regeneration and diffusion.
 type EnvironmentSystem struct{}
 
-func (s *EnvironmentSystem) Name() string     { return "EnvironmentSystem" }
-func (s *EnvironmentSystem) Priority() int    { return 1 }
+func (s *EnvironmentSystem) Name() string  { return "EnvironmentSystem" }
+func (s *EnvironmentSystem) Priority() int { return 1 }
 
 func (s *EnvironmentSystem) Tick(w *engine.World) {
 	cfg := DefaultScenarioConfig()
 	env := w.Next.Env
 
-	// Spirit energy regeneration (every cell regains some spirit).
-	for y := range env.Height {
-		for x := range env.Width {
-			current := env.GetEnv(x, y, "spirit_density")
-			maxVal := env.GetEnv(x, y, "spirit_max")
-			if maxVal == 0 {
-				maxVal = cfg.SpiritMax
-			}
-			regen := env.GetEnv(x, y, "regeneration_rate")
-			if regen == 0 {
-				regen = cfg.SpiritRegenRate
-			}
-			next := current + regen
-			if next > maxVal {
-				next = maxVal
-			}
-			env.SetEnv(x, y, "spirit_density", next)
+	// Spirit energy regeneration.
+	for i := range env.Cells {
+		current := env.Cells[i].Env0
+		maxVal := env.Cells[i].Env1
+		if maxVal == 0 {
+			maxVal = cfg.SpiritMax
 		}
+		regen := env.Cells[i].Env2
+		if regen == 0 {
+			regen = cfg.SpiritRegenRate
+		}
+		next := current + regen
+		if next > maxVal {
+			next = maxVal
+		}
+		env.Cells[i].Env0 = next
 	}
 
-	// Simple diffusion: each cell leaks a fraction of spirit to neighbors.
+	// Diffusion.
 	diffusionRate := 0.05
-	changes := make([][]float64, env.Height)
-	for y := range env.Height {
-		changes[y] = make([]float64, env.Width)
-	}
+	changes := make([]float64, len(env.Cells))
 
 	for y := range env.Height {
 		for x := range env.Width {
-			spirit := env.GetEnv(x, y, "spirit_density")
+			i := y*env.Width + x
+			spirit := env.Cells[i].Env0
 			leak := spirit * diffusionRate / 8.0
 			for dy := -1; dy <= 1; dy++ {
 				for dx := -1; dx <= 1; dx++ {
@@ -50,27 +46,26 @@ func (s *EnvironmentSystem) Tick(w *engine.World) {
 					}
 					nx := (x + dx + env.Width) % env.Width
 					ny := (y + dy + env.Height) % env.Height
-					changes[ny][nx] += leak
-					changes[y][x] -= leak
+					ni := ny*env.Width + nx
+					changes[ni] += leak
+					changes[i] -= leak
 				}
 			}
 		}
 	}
 
-	for y := range env.Height {
-		for x := range env.Width {
-			newVal := env.GetEnv(x, y, "spirit_density") + changes[y][x]
-			if newVal < 0 {
-				newVal = 0
-			}
-			maxVal := env.GetEnv(x, y, "spirit_max")
-			if maxVal == 0 {
-				maxVal = cfg.SpiritMax
-			}
-			if newVal > maxVal {
-				newVal = maxVal
-			}
-			env.SetEnv(x, y, "spirit_density", newVal)
+	for i := range env.Cells {
+		newVal := env.Cells[i].Env0 + changes[i]
+		if newVal < 0 {
+			newVal = 0
 		}
+		maxVal := env.Cells[i].Env1
+		if maxVal == 0 {
+			maxVal = cfg.SpiritMax
+		}
+		if newVal > maxVal {
+			newVal = maxVal
+		}
+		env.Cells[i].Env0 = newVal
 	}
 }

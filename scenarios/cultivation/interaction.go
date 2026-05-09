@@ -1,63 +1,70 @@
 package cultivation
 
-import "github.com/runmin/sugarscape/engine"
+import (
+	"sync"
 
-// InteractionSystem decides what happens when two agents occupy the same cell.
-// For v1: 70% chance of combat between beasts and cultivators / different sects.
+	"github.com/runmin/sugarscape/engine"
+)
+
+// InteractionSystem decides encounters based on realm detection range and personality.
 type InteractionSystem struct{}
 
 func (s *InteractionSystem) Name() string  { return "InteractionSystem" }
 func (s *InteractionSystem) Priority() int { return 4 }
 
-// PendingFight records a fight that will be resolved by CombatSystem.
+var (
+	pendingFights   []PendingFight
+	pendingFightsMu sync.Mutex
+)
+
 type PendingFight struct {
 	Attacker int
 	Defender int
 }
 
-// PendingFights is stored on the world for the combat system to consume.
-// We use a simple approach: store the list as a global for the current tick.
-var pendingFightsKey = "pending_fights"
-
 func (s *InteractionSystem) Tick(w *engine.World) {
 	agents := w.Next.Agents
 	var fights []PendingFight
 
-	// Track which agent pairs have already interacted this tick.
-	interacted := make(map[int]bool)
+	// Track which pairs have already been processed.
+	seen := make(map[int]bool)
 
 	for i := range agents.ID {
 		if !agents.Alive[i] {
 			continue
 		}
+		kindI := agents.Kind[i]
+
+		// Determine detection range.
+		detectRange := 0
+		if kindI == "cultivator" {
+			realm := int(agents.Attrs[i].Num["realm"])
+			if realm < 1 {
+				realm = 1
+			}
+			detectRange = GetRealm(realm).DetectRange - 1 // range in cells around
+		}
 
 		x, y := agents.X[i], agents.Y[i]
-		neighbors := w.Grid.GetNeighbors(x, y)
+		neighbors := w.Grid.GetNeighbors(x, y, detectRange)
+
 		for _, j := range neighbors {
 			if j >= len(agents.ID) || j == i || !agents.Alive[j] {
 				continue
 			}
-			// Skip if same cell & same kind with same sect
-			if agents.X[j] == x && agents.Y[j] == y {
-				pairKey := i*1000000 + j
-				if interacted[pairKey] {
-					continue
-				}
-				if interacted[j*1000000+i] {
-					continue
-				}
-				interacted[pairKey] = true
+			pairKey := i*10000000 + j
+			if seen[pairKey] || seen[j*10000000+i] {
+				continue
+			}
+			seen[pairKey] = true
 
-				fights = append(fights, s.resolveInteraction(w, i, j))
+			fight := s.resolveInteraction(w, i, j)
+			if fight.Attacker != 0 || fight.Defender != 0 {
+				fights = append(fights, fight)
 			}
 		}
 	}
 
-	// Store pending fights for CombatSystem.
-	if len(fights) > 0 {
-		w.Next.Agents.Attrs = append(w.Next.Agents.Attrs, engine.NewAttrBag()) // dummy, will be cleaned
-	}
-	// HACK: store fights in a global for now. In v2, use the event bus.
 	pendingFightsMu.Lock()
 	pendingFights = append(pendingFights, fights...)
 	pendingFightsMu.Unlock()
@@ -73,32 +80,53 @@ func (s *InteractionSystem) resolveInteraction(w *engine.World, i, j int) Pendin
 		return PendingFight{Attacker: i, Defender: j}
 	}
 
-	// Cultivator vs cultivator.
+	// Beast vs beast: no fight.
+	if kindI == "spirit_beast" && kindJ == "spirit_beast" {
+		return PendingFight{}
+	}
+
+	// Cultivator vs cultivator: personality-driven.
 	if kindI == "cultivator" && kindJ == "cultivator" {
-		cpI := agents.Attrs[i].Num["combat_power"]
-		cpJ := agents.Attrs[j].Num["combat_power"]
-		ratio := cpI / cpJ
-		if cpJ == 0 {
-			ratio = 10
+		realmI := int(agents.Attrs[i].Num["realm"])
+		realmJ := int(agents.Attrs[j].Num["realm"])
+		if realmI < 1 {
+			realmI = 1
+		}
+		if realmJ < 1 {
+			realmJ = 1
 		}
 
-		// Large power gap → weak side flees (no fight).
-		if ratio > DefaultScenarioConfig().FleeThreshold ||
-			(1.0/ratio) > DefaultScenarioConfig().FleeThreshold {
-			return PendingFight{} // empty fight = no fight
-		}
-
-		// Same sect → cooperate (no fight).
+		// Same sect: no fight.
 		sectI := agents.Attrs[i].Str["sect"]
 		sectJ := agents.Attrs[j].Str["sect"]
 		if sectI != "" && sectI == sectJ {
 			return PendingFight{}
 		}
 
-		// Otherwise, some probability of fighting.
-		if w.RNG.Float64() < 0.3 {
+		// Compute attack desire for i → j.
+		realmDiff := float64(realmI - realmJ)
+		aggression := agents.Attrs[i].Num["aggression"]
+		attackDesire := aggression * realmDiff * realmDiff
+		if realmDiff < 0 {
+			attackDesire = -aggression * realmDiff * realmDiff
+		}
+
+		// Also check power ratio for flee threshold.
+		cpI := agents.Attrs[i].Num["combat_power"]
+		cpJ := agents.Attrs[j].Num["combat_power"]
+		if cpJ > 0 && cpI/cpJ > DefaultScenarioConfig().FleeThreshold {
+			// i is much stronger — always attacks.
 			return PendingFight{Attacker: i, Defender: j}
 		}
+		if cpI > 0 && cpJ/cpI > DefaultScenarioConfig().FleeThreshold {
+			// j is much stronger — i flees.
+			return PendingFight{}
+		}
+
+		if attackDesire > 0.5 {
+			return PendingFight{Attacker: i, Defender: j}
+		}
+		// attackDesire between -0.5 and 0.5: ignore.
 	}
 
 	return PendingFight{}

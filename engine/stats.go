@@ -13,48 +13,63 @@ type DataPoint struct {
 	Year float64
 	// Counts by kind
 	KindCounts map[string]int
-	// Counts by realm (realm name → count) — populated by scenario
+	// Counts by realm (realm name → count)
 	RealmCounts map[string]int
 	// Totals
-	TotalAgents int
-	AvgQi       float64
-	AvgAge      float64
-	AvgCP       float64 // combat power
+	TotalAgents   int
+	TotalMortals  float64
+	AvgQi         float64
+	AvgAge        float64
+	AvgCP         float64 // combat power
+	AvgAggression float64
 	// Events this tick
-	Deaths        int
-	Births        int
-	Breakthroughs int
+	Deaths            int
+	Births            int
+	Breakthroughs     int
+	MortalConversions int
 }
 
 type StatsCollector struct {
-	Snapshots     []DataPoint
-	TickDeaths    int
-	TickBirths    int
-	TickBreakthru int
+	Snapshots          []DataPoint
+	TickDeaths         int
+	TickBirths         int
+	TickBreakthru      int
+	TickMortalConv     int
 }
 
 func NewStatsCollector() *StatsCollector {
 	return &StatsCollector{}
 }
 
-// RecordDeath records an event for the current tick.
-func (sc *StatsCollector) RecordDeath()  { sc.TickDeaths++ }
-func (sc *StatsCollector) RecordBirth()  { sc.TickBirths++ }
-func (sc *StatsCollector) RecordBreakthrough() { sc.TickBreakthru++ }
+func (sc *StatsCollector) RecordDeath()          { sc.TickDeaths++ }
+func (sc *StatsCollector) RecordBirth()           { sc.TickBirths++ }
+func (sc *StatsCollector) RecordBreakthrough()    { sc.TickBreakthru++ }
+func (sc *StatsCollector) RecordMortalConversion() { sc.TickMortalConv++ }
+
+var realmNames = map[int]string{
+	0: "凡人",
+	1: "练气",
+	2: "筑基",
+	3: "金丹",
+	4: "元婴",
+	5: "化神",
+}
 
 // Snapshot captures the current world state and resets tick counters.
-func (sc *StatsCollector) Snapshot(f *Frame, tick int64, year float64) {
+func (sc *StatsCollector) Snapshot(f *Frame, env *Grid, tick int64, year float64) {
 	dp := DataPoint{
-		Tick:        tick,
-		Year:        year,
-		KindCounts:  make(map[string]int),
-		RealmCounts: make(map[string]int),
-		Deaths:      sc.TickDeaths,
-		Births:      sc.TickBirths,
-		Breakthroughs: sc.TickBreakthru,
+		Tick:              tick,
+		Year:              year,
+		KindCounts:        make(map[string]int),
+		RealmCounts:       make(map[string]int),
+		TotalMortals:      env.TotalMortals(),
+		Deaths:            sc.TickDeaths,
+		Births:            sc.TickBirths,
+		Breakthroughs:     sc.TickBreakthru,
+		MortalConversions: sc.TickMortalConv,
 	}
 
-	var qiSum, ageSum, cpSum float64
+	var qiSum, ageSum, cpSum, aggSum float64
 	alive := 0
 	for i := range f.Agents.ID {
 		if !f.Agents.Alive[i] {
@@ -64,34 +79,30 @@ func (sc *StatsCollector) Snapshot(f *Frame, tick int64, year float64) {
 		kind := f.Agents.Kind[i]
 		dp.KindCounts[kind]++
 
-		realm := int(f.Agents.Attrs[i].Num["realm"])
-		realmName := realmNames[realm]
-		dp.RealmCounts[realmName]++
-
-		qiSum += f.Agents.Attrs[i].Num["qi"]
-		ageSum += f.Agents.Attrs[i].Num["age"]
-		cpSum += f.Agents.Attrs[i].Num["combat_power"]
+		if kind == "cultivator" {
+			realm := int(f.Agents.Attrs[i].Num["realm"])
+			realmName := realmNames[realm]
+			dp.RealmCounts[realmName]++
+			qiSum += f.Agents.Attrs[i].Num["qi"]
+			ageSum += f.Agents.Attrs[i].Num["age"]
+			cpSum += f.Agents.Attrs[i].Num["combat_power"]
+			aggSum += f.Agents.Attrs[i].Num["aggression"]
+		}
 	}
 	dp.TotalAgents = alive
-	if alive > 0 {
-		dp.AvgQi = qiSum / float64(alive)
-		dp.AvgAge = ageSum / float64(alive)
-		dp.AvgCP = cpSum / float64(alive)
+	cultCount := dp.KindCounts["cultivator"]
+	if cultCount > 0 {
+		dp.AvgQi = qiSum / float64(cultCount)
+		dp.AvgAge = ageSum / float64(cultCount)
+		dp.AvgCP = cpSum / float64(cultCount)
+		dp.AvgAggression = aggSum / float64(cultCount)
 	}
 
 	sc.Snapshots = append(sc.Snapshots, dp)
 	sc.TickDeaths = 0
 	sc.TickBirths = 0
 	sc.TickBreakthru = 0
-}
-
-var realmNames = map[int]string{
-	0: "凡人",
-	1: "练气",
-	2: "筑基",
-	3: "金丹",
-	4: "元婴",
-	5: "化神",
+	sc.TickMortalConv = 0
 }
 
 // ExportCSV writes all snapshots to a CSV file.
@@ -105,7 +116,6 @@ func (sc *StatsCollector) ExportCSV(path string) error {
 	w := csv.NewWriter(f)
 	defer w.Flush()
 
-	// Collect all column names
 	kindSet := make(map[string]struct{})
 	realmSet := make(map[string]struct{})
 	for _, dp := range sc.Snapshots {
@@ -119,8 +129,8 @@ func (sc *StatsCollector) ExportCSV(path string) error {
 	kinds := sortedKeys(kindSet)
 	realms := sortedKeys(realmSet)
 
-	// Header
-	header := []string{"tick", "year", "total_agents", "avg_qi", "avg_age", "avg_combat_power", "deaths", "births", "breakthroughs"}
+	header := []string{"tick", "year", "total_agents", "total_mortals", "avg_qi", "avg_age", "avg_combat_power", "avg_aggression",
+		"deaths", "births", "breakthroughs", "mortal_conversions"}
 	for _, k := range kinds {
 		header = append(header, "kind_"+k)
 	}
@@ -131,18 +141,20 @@ func (sc *StatsCollector) ExportCSV(path string) error {
 		return err
 	}
 
-	// Rows
 	for _, dp := range sc.Snapshots {
 		row := []string{
 			fmt.Sprintf("%d", dp.Tick),
 			fmt.Sprintf("%.2f", dp.Year),
 			fmt.Sprintf("%d", dp.TotalAgents),
+			fmt.Sprintf("%.0f", dp.TotalMortals),
 			fmt.Sprintf("%.2f", dp.AvgQi),
 			fmt.Sprintf("%.2f", dp.AvgAge),
 			fmt.Sprintf("%.2f", dp.AvgCP),
+			fmt.Sprintf("%.4f", dp.AvgAggression),
 			fmt.Sprintf("%d", dp.Deaths),
 			fmt.Sprintf("%d", dp.Births),
 			fmt.Sprintf("%d", dp.Breakthroughs),
+			fmt.Sprintf("%d", dp.MortalConversions),
 		}
 		for _, k := range kinds {
 			row = append(row, fmt.Sprintf("%d", dp.KindCounts[k]))

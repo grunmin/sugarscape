@@ -9,8 +9,8 @@ type EngineConfig struct {
 
 func DefaultEngineConfig() EngineConfig {
 	return EngineConfig{
-		GridWidth:    100,
-		GridHeight:   100,
+		GridWidth:    1000,
+		GridHeight:   1000,
 		Seed:         42,
 		TicksPerYear: 10,
 	}

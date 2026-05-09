@@ -1,5 +1,7 @@
 package engine
 
+import "math"
+
 // AttrBag holds arbitrary typed attributes for an agent.
 // Num is for numeric stats (qi, combat_power, etc.).
 // Str is for string tags (sect, strategy, etc.).
@@ -30,7 +32,6 @@ func (a AttrBag) Clone() AttrBag {
 }
 
 // AgentStore is a struct-of-arrays for agent data.
-// Dead agents have Alive[i]=false; their slot is recycled for new spawns.
 type AgentStore struct {
 	ID    []int
 	Kind  []string
@@ -134,4 +135,14 @@ func (as *AgentStore) Clone() *AgentStore {
 		c.Attrs[i] = as.Attrs[i].Clone()
 	}
 	return c
+}
+
+// Clamp clamps a float64 to [lo, hi].
+func Clamp(v, lo, hi float64) float64 {
+	return math.Max(lo, math.Min(hi, v))
+}
+
+// Wrap wraps x to [0, n) like a torus.
+func Wrap(x, n int) int {
+	return ((x % n) + n) % n
 }

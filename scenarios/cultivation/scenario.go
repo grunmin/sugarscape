@@ -1,9 +1,6 @@
 package cultivation
 
 import (
-	"fmt"
-	"sort"
-
 	"github.com/runmin/sugarscape/engine"
 )
 
@@ -11,16 +8,14 @@ import (
 func Setup(w *engine.World) {
 	cfg := DefaultScenarioConfig()
 
-	// --- Initialize environment ---
+	// --- Initialize environment: spirit density ---
 	env := w.Curr.Env
-	// Create uneven spirit density using noise-like pattern.
 	for y := range env.Height {
 		for x := range env.Width {
-			// Mix of sine waves for natural-looking distribution.
 			v := 0.0
-			v += sinF(x, y, 8, 0.7) * 25
-			v += sinF(x, y, 15, 0.3) * 15
-			v += sinF(x, y, 4, 0.5) * 10
+			v += sinF(x, y, 80, 0.7) * 25
+			v += sinF(x, y, 150, 0.3) * 15
+			v += sinF(x, y, 40, 0.5) * 10
 			spirit := cfg.BaseSpiritDensity + v
 			if spirit < 5 {
 				spirit = 5
@@ -28,14 +23,15 @@ func Setup(w *engine.World) {
 			if spirit > cfg.SpiritMax {
 				spirit = cfg.SpiritMax
 			}
-			env.SetEnv(x, y, "spirit_density", spirit)
-			env.SetEnv(x, y, "spirit_max", spirit+15) // max slightly above initial
-			env.SetEnv(x, y, "regeneration_rate", cfg.SpiritRegenRate+w.RNG.Float64()*0.3)
+			idx := y*env.Width + x
+			env.Cells[idx].Env0 = spirit
+			env.Cells[idx].Env1 = spirit + 15
+			env.Cells[idx].Env2 = cfg.SpiritRegenRate + w.RNG.Float64()*0.3
 		}
 	}
 
-	// Create a few "spirit springs" — high density areas.
-	for range 5 {
+	// Spirit springs.
+	for range cfg.NumSpiritSprings {
 		sx := w.RNG.Intn(w.Config.GridWidth)
 		sy := w.RNG.Intn(w.Config.GridHeight)
 		for dy := -5; dy <= 5; dy++ {
@@ -44,59 +40,69 @@ func Setup(w *engine.World) {
 				ny := (sy + dy + w.Config.GridHeight) % w.Config.GridHeight
 				dist := float64(dx*dx + dy*dy)
 				boost := 30 * exp(-dist/15)
-				current := env.GetEnv(nx, ny, "spirit_density")
+				current := env.Env0(nx, ny)
 				newVal := current + boost
-				maxV := current + 40
-				if newVal > maxV {
-					newVal = maxV
+				if newVal > current+40 {
+					newVal = current + 40
 				}
 				if newVal > cfg.SpiritMax {
 					newVal = cfg.SpiritMax
 				}
-				env.SetEnv(nx, ny, "spirit_density", newVal)
-				env.SetEnv(nx, ny, "spirit_max", newVal+10)
-				env.SetEnv(nx, ny, "regeneration_rate", cfg.SpiritRegenRate+0.5)
+				env.SetEnv0(nx, ny, newVal)
+				env.SetEnv1(nx, ny, newVal+10)
+				env.SetEnv2(nx, ny, cfg.SpiritRegenRate+0.5)
 			}
 		}
 	}
 
-	// Clone initial env to Next frame.
+	// Clone env to Next frame.
 	w.Next.Env = env.CloneEnv()
 
-	// --- Initialize cultivators ---
-	strategies := []string{"aggressive", "peaceful", "merchant", "hermit", "bandit"}
-	// Sort realm levels for deterministic initialization.
-	realms := make([]int, 0, len(cfg.InitRealmDist))
-	for r := range cfg.InitRealmDist {
-		realms = append(realms, r)
+	// --- Initialize mortal population (tribal distribution) ---
+	tribeCenters := make([][2]int, cfg.NumTribes)
+	for i := range cfg.NumTribes {
+		tribeCenters[i] = [2]int{
+			w.RNG.Intn(w.Config.GridWidth),
+			w.RNG.Intn(w.Config.GridHeight),
+		}
 	}
-	sort.Ints(realms)
-	for _, realm := range realms {
-		fraction := cfg.InitRealmDist[realm]
-		count := int(float64(cfg.InitialCultivators) * fraction)
-		rc := GetRealm(realm)
-		for range count {
-			x := w.RNG.Intn(w.Config.GridWidth)
-			y := w.RNG.Intn(w.Config.GridHeight)
 
-			attrs := engine.NewAttrBag()
-			attrs.Num["realm"] = float64(realm)
-			attrs.Num["qi"] = cfg.BaseQi * rc.QiMultiplier * (0.5 + w.RNG.Float64()*0.5)
-			attrs.Num["qi_max"] = cfg.BaseQi * rc.QiMultiplier
-			attrs.Num["combat_power"] = cfg.BaseQi * rc.CombatMultiplier * (0.5 + w.RNG.Float64())
-			attrs.Num["age"] = w.RNG.Float64() * rc.Lifespan * 0.3 // start at 0-30% of lifespan
-			attrs.Num["lifespan"] = rc.Lifespan
-			attrs.Num["cultivation_speed"] = 0.3 + w.RNG.Float64()*0.7
-			attrs.Num["breakthrough_chance"] = 1.0 // base multiplier
-			attrs.Str["strategy"] = strategies[w.RNG.Intn(len(strategies))]
-			// 80% are 散修 (rogue cultivators).
-			if w.RNG.Float64() < 0.8 {
-				attrs.Str["sect"] = ""
-			} else {
-				attrs.Str["sect"] = fmt.Sprintf("宗门%d", 1+w.RNG.Intn(4))
+	for y := range env.Height {
+		for x := range env.Width {
+			// Find distance to nearest tribe center.
+			minDist := 1e9
+			for _, tc := range tribeCenters {
+				dx := float64(x - tc[0])
+				dy := float64(y - tc[1])
+				// Toroidal distance.
+				if dx > float64(w.Config.GridWidth)/2 {
+					dx = float64(w.Config.GridWidth) - dx
+				}
+				if dy > float64(w.Config.GridHeight)/2 {
+					dy = float64(w.Config.GridHeight) - dy
+				}
+				dist := dx*dx + dy*dy
+				if dist < minDist {
+					minDist = dist
+				}
 			}
 
-			w.Curr.Agents.Add("cultivator", x, y, attrs)
+			// Population density based on distance to tribe center.
+			var densityMult float64
+			r := minDist
+			if r < 9 {
+				densityMult = 5.0 // core
+			} else if r < 100 {
+				densityMult = 2.0 // inner
+			} else {
+				densityMult = 0.5 // periphery
+			}
+
+			// Add noise.
+			densityMult *= 0.7 + w.RNG.Float64()*0.6
+
+			mortalPop := cfg.MortalBaseDensity * densityMult
+			env.SetMortal(x, y, mortalPop)
 		}
 	}
 
@@ -119,6 +125,7 @@ func Setup(w *engine.World) {
 	w.Next.Agents = w.Curr.Agents.Clone()
 
 	// --- Register systems ---
+	w.RegisterSystem(&MortalSystem{})
 	w.RegisterSystem(&EnvironmentSystem{})
 	w.RegisterSystem(&CultivationSystem{})
 	w.RegisterSystem(&MovementSystem{})
@@ -127,14 +134,14 @@ func Setup(w *engine.World) {
 	w.RegisterSystem(&LifecycleSystem{})
 }
 
-// Utility math helpers (avoid importing math for simple ops).
+// --- Math helpers ---
+
 func sinF(x, y int, period float64, phase float64) float64 {
 	v := float64(x)*phase + float64(y)*(1-phase)
 	return sin(v/period*2*3.14159 + phase)
 }
 
 func sin(v float64) float64 {
-	// Taylor series approximation, good enough for terrain generation.
 	v = v - float64(int(v/(2*3.14159)))*2*3.14159
 	s := v
 	t := v

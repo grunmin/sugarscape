@@ -13,9 +13,9 @@ func (s *LifecycleSystem) Tick(w *engine.World) {
 	agents := w.Next.Agents
 	env := w.Next.Env
 
-	// Track births this tick (to avoid spawning during iteration).
 	type birthReq struct {
 		x, y  int
+		kind  string
 		attrs engine.AttrBag
 	}
 	var births []birthReq
@@ -39,53 +39,52 @@ func (s *LifecycleSystem) Tick(w *engine.World) {
 			rc := GetRealm(realm)
 			lifespan := rc.Lifespan
 
-			// Natural death (age > lifespan).
+			// Natural death.
 			if attrs.Num["age"] >= lifespan {
 				agents.Kill(i)
 				w.Stats.RecordDeath()
 				continue
 			}
 
-			// Birth: probability based on age.
+			// Birth.
 			age := attrs.Num["age"]
 			if age >= cfg.BirthCooldown &&
 				age < lifespan*0.7 &&
 				w.RNG.Float64() < cfg.BaseBirthRate {
 
+				childRC := GetRealm(1)
 				childAttrs := engine.NewAttrBag()
 				childAttrs.Num["realm"] = 1
-				childAttrs.Num["qi"] = cfg.BaseQi * 0.3
-				childAttrs.Num["qi_max"] = cfg.BaseQi
-				childAttrs.Num["combat_power"] = cfg.BaseQi * 0.3
+				childAttrs.Num["qi"] = cfg.BaseQi * childRC.QiMultiplier * 0.3
+				childAttrs.Num["qi_max"] = cfg.BaseQi * childRC.QiMultiplier
+				childAttrs.Num["combat_power"] = cfg.BaseQi * childRC.CombatMultiplier * 0.3
 				childAttrs.Num["age"] = 0
-				childAttrs.Num["lifespan"] = DefaultRealms[0].Lifespan
+				childAttrs.Num["lifespan"] = childRC.Lifespan
 				childAttrs.Num["cultivation_speed"] = 0.5 + w.RNG.Float64()*0.5
-				childAttrs.Num["breakthrough_chance"] = 1.0
+				childAttrs.Num["aggression"] = w.RNG.Float64()
+				childAttrs.Num["breakthrough_cooldown"] = 0
 				childAttrs.Str["sect"] = attrs.Str["sect"]
 				childAttrs.Str["strategy"] = attrs.Str["strategy"]
 				if w.RNG.Float64() < 0.1 {
-					// 10% chance child has different strategy.
 					strategies := []string{"aggressive", "peaceful", "merchant", "hermit", "bandit"}
 					childAttrs.Str["strategy"] = strategies[w.RNG.Intn(len(strategies))]
 				}
 
 				births = append(births, birthReq{
-					x:     agents.X[i],
-					y:     agents.Y[i],
-					attrs: childAttrs,
+					x: agents.X[i], y: agents.Y[i],
+					kind: "cultivator", attrs: childAttrs,
 				})
 				w.Stats.RecordBirth()
 			}
 
 		case "spirit_beast":
-			// Beasts have fixed lifespan.
-			if attrs.Num["age"] >= 200 {
+			if attrs.Num["age"] >= 200+w.RNG.Float64()*100 {
 				agents.Kill(i)
 				w.Stats.RecordDeath()
 				continue
 			}
 			// Beast reproduction.
-			if w.RNG.Float64() < 0.002 {
+			if w.RNG.Float64() < 0.01 {
 				bEA := engine.NewAttrBag()
 				bEA.Num["age"] = 0
 				bEA.Num["combat_power"] = cfg.BeastCombatBase * (0.5 + w.RNG.Float64())
@@ -93,9 +92,9 @@ func (s *LifecycleSystem) Tick(w *engine.World) {
 				bEA.Num["qi_max"] = 50
 				bEA.Num["lifespan"] = 200 + w.RNG.Float64()*100
 				births = append(births, birthReq{
-					x:     (agents.X[i] + w.RNG.Intn(3) - 1 + w.Config.GridWidth) % w.Config.GridWidth,
-					y:     (agents.Y[i] + w.RNG.Intn(3) - 1 + w.Config.GridHeight) % w.Config.GridHeight,
-					attrs: bEA,
+					x: (agents.X[i] + w.RNG.Intn(3) - 1 + w.Config.GridWidth) % w.Config.GridWidth,
+					y: (agents.Y[i] + w.RNG.Intn(3) - 1 + w.Config.GridHeight) % w.Config.GridHeight,
+					kind: "spirit_beast", attrs: bEA,
 				})
 			}
 		}
@@ -103,24 +102,26 @@ func (s *LifecycleSystem) Tick(w *engine.World) {
 
 	// Apply births.
 	for _, b := range births {
-		agents.Add("cultivator", b.x, b.y, b.attrs)
+		agents.Add(b.kind, b.x, b.y, b.attrs)
 	}
 
-	// Cap spirit beasts population loosely.
+	// Beast population floor.
 	beastCount := agents.CountKind("spirit_beast")
-	if beastCount < 50 {
-		// Spawn a few beasts in high-spirit areas.
-		for range 2 {
-			bx := w.RNG.Intn(w.Config.GridWidth)
-			by := w.RNG.Intn(w.Config.GridHeight)
-			if env.GetEnv(bx, by, "spirit_density") > 40 {
-				bEA := engine.NewAttrBag()
-				bEA.Num["age"] = w.RNG.Float64() * 50
-				bEA.Num["combat_power"] = cfg.BeastCombatBase * (0.5 + w.RNG.Float64())
-				bEA.Num["qi"] = 10
-				bEA.Num["qi_max"] = 50
-				bEA.Num["lifespan"] = 200 + w.RNG.Float64()*100
-				agents.Add("spirit_beast", bx, by, bEA)
+	if beastCount < cfg.BeastMinPopulation {
+		for range cfg.BeastSpawnPerTick {
+			for attempt := 0; attempt < 10; attempt++ {
+				bx := w.RNG.Intn(w.Config.GridWidth)
+				by := w.RNG.Intn(w.Config.GridHeight)
+				if env.Env0(bx, by) > 40 {
+					bEA := engine.NewAttrBag()
+					bEA.Num["age"] = w.RNG.Float64() * 50
+					bEA.Num["combat_power"] = cfg.BeastCombatBase * (0.5 + w.RNG.Float64())
+					bEA.Num["qi"] = 10
+					bEA.Num["qi_max"] = 50
+					bEA.Num["lifespan"] = 200 + w.RNG.Float64()*100
+					agents.Add("spirit_beast", bx, by, bEA)
+					break
+				}
 			}
 		}
 	}

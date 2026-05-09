@@ -13,38 +13,34 @@ func main() {
 	cfg := engine.DefaultEngineConfig()
 	scnCfg := cultivation.DefaultScenarioConfig()
 
-	// Create world.
 	world := engine.NewWorld(cfg)
-
-	// Setup cultivation scenario.
 	cultivation.Setup(world)
 
-	// Print header.
 	fmt.Println("=== 修仙世界模拟器 ===")
-	fmt.Printf("世界: %d×%d  初始修仙者: %d  初始妖兽: %d  种子: %d\n",
+	fmt.Printf("世界: %d×%d  凡人/格: %.0f  初始妖兽: %d  种子: %d\n",
 		cfg.GridWidth, cfg.GridHeight,
-		scnCfg.InitialCultivators, scnCfg.InitialBeasts, cfg.Seed)
+		scnCfg.MortalBaseDensity, scnCfg.InitialBeasts, cfg.Seed)
+	fmt.Printf("部落数: %d  凡人→修仙转化率: %.3f (一生)\n",
+		scnCfg.NumTribes, scnCfg.MortalConvChance)
 	fmt.Println()
 
-	maxTicks := int64(500)
-	snapshotEvery := 10
+	maxTicks := int64(1000)
+	snapshotEvery := 20
 	startTime := time.Now()
 
 	// Print stats header.
-	fmt.Printf("%-6s %-6s %-8s %-6s %-6s %-6s %-6s %-6s %-6s %-6s\n",
-		"tick", "year", "total", "练气", "筑基", "金丹", "元婴", "化神", "avg_qi", "avg_cp")
-	fmt.Println("------ ------ -------- ------ ------ ------ ------ ------ ------ ------")
+	fmt.Printf("%-6s %-6s %-8s %-12s %-8s %-8s %-8s %-8s %-8s\n",
+		"tick", "year", "cultiv", "mortals", "练气", "筑基", "金丹", "元婴", "化神")
+	fmt.Println("------ ------ -------- ------------ -------- -------- -------- -------- --------")
 
-	// Run simulation.
 	for tick := int64(0); tick < maxTicks; tick++ {
 		world.Tick()
 
 		if world.Clock.Tick%int64(snapshotEvery) == 0 {
-			world.Stats.Snapshot(world.Curr, world.Clock.Tick, world.Clock.Year())
+			world.Stats.Snapshot(world.Curr, world.Next.Env, world.Clock.Tick, world.Clock.Year())
 		}
 
-		// Print live stats every 50 ticks.
-		if world.Clock.Tick%50 == 0 {
+		if world.Clock.Tick%100 == 0 {
 			printTickStats(world)
 		}
 	}
@@ -54,7 +50,7 @@ func main() {
 	fmt.Printf("模拟完成，耗时 %s\n", elapsed)
 
 	// Final snapshot.
-	world.Stats.Snapshot(world.Curr, world.Clock.Tick, world.Clock.Year())
+	world.Stats.Snapshot(world.Curr, world.Next.Env, world.Clock.Tick, world.Clock.Year())
 
 	// Export CSV.
 	outPath := "output/stats.csv"
@@ -68,7 +64,6 @@ func main() {
 	}
 	fmt.Printf("统计数据已导出到 %s (%d 条记录)\n", outPath, len(world.Stats.Snapshots))
 
-	// Final summary.
 	printFinalSummary(world)
 }
 
@@ -76,7 +71,6 @@ func printTickStats(w *engine.World) {
 	agents := w.Curr.Agents
 	realms := map[int]int{1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
 	total := 0
-	var qiSum, cpSum float64
 
 	for i := range agents.ID {
 		if !agents.Alive[i] || agents.Kind[i] != "cultivator" {
@@ -87,22 +81,15 @@ func printTickStats(w *engine.World) {
 		if r < 1 {
 			r = 1
 		}
+		if r > 5 {
+			r = 5
+		}
 		realms[r]++
-		qiSum += agents.Attrs[i].Num["qi"]
-		cpSum += agents.Attrs[i].Num["combat_power"]
 	}
 
-	avgQi := 0.0
-	avgCP := 0.0
-	if total > 0 {
-		avgQi = qiSum / float64(total)
-		avgCP = cpSum / float64(total)
-	}
-
-	fmt.Printf("%-6d %-6.0f %-8d %-6d %-6d %-6d %-6d %-6d %-6.0f %-6.0f\n",
-		w.Clock.Tick, w.Clock.Year(), total,
-		realms[1], realms[2], realms[3], realms[4], realms[5],
-		avgQi, avgCP)
+	fmt.Printf("%-6d %-6.0f %-8d %-12.0f %-8d %-8d %-8d %-8d %-8d\n",
+		w.Clock.Tick, w.Clock.Year(), total, w.Next.Env.TotalMortals(),
+		realms[1], realms[2], realms[3], realms[4], realms[5])
 }
 
 func printFinalSummary(w *engine.World) {
@@ -118,14 +105,17 @@ func printFinalSummary(w *engine.World) {
 	fmt.Printf("模拟年数: %.0f 年\n", last.Year-first.Year)
 	fmt.Printf("最终修仙者数量: %d\n", last.KindCounts["cultivator"])
 	fmt.Printf("最终妖兽数量: %d\n", last.KindCounts["spirit_beast"])
+	fmt.Printf("凡人总数: %.0f\n", last.TotalMortals)
 	fmt.Println("境界分布:")
 	for _, name := range []string{"练气", "筑基", "金丹", "元婴", "化神"} {
 		fmt.Printf("  %s: %d\n", name, last.RealmCounts[name])
 	}
-	fmt.Printf("总死亡: %d  总出生: %d  总突破: %d\n",
+	fmt.Printf("平均攻击性: %.4f\n", last.AvgAggression)
+	fmt.Printf("总死亡: %d  总出生: %d  总突破: %d  凡人转化: %d\n",
 		sumInt(snaps, func(dp engine.DataPoint) int { return dp.Deaths }),
 		sumInt(snaps, func(dp engine.DataPoint) int { return dp.Births }),
-		sumInt(snaps, func(dp engine.DataPoint) int { return dp.Breakthroughs }))
+		sumInt(snaps, func(dp engine.DataPoint) int { return dp.Breakthroughs }),
+		sumInt(snaps, func(dp engine.DataPoint) int { return dp.MortalConversions }))
 }
 
 func sumInt(snaps []engine.DataPoint, fn func(engine.DataPoint) int) int {
