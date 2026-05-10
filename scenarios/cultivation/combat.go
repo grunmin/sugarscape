@@ -66,19 +66,17 @@ func (s *CombatSystem) Tick(w *engine.World) {
 			loserID := agents.ID[loser]
 			agents.Kill(loser)
 			w.Stats.RecordDeath()
-			if loserRealm >= 4 {
-				eventTick := w.Clock.Tick + 1
-				w.Stats.RecordNotableEvent(engine.NotableEvent{
-					Tick:    eventTick,
-					Year:    float64(eventTick) / float64(w.Config.TicksPerYear),
-					Kind:    "死亡",
-					Realm:   GetRealm(loserRealm).Name,
-					AgentID: loserID,
-					X:       loserX,
-					Y:       loserY,
-					Reason:  "战斗死亡",
-				})
-			}
+			eventTick := w.Clock.Tick + 1
+			w.Stats.RecordNotableEvent(engine.NotableEvent{
+				Tick:    eventTick,
+				Year:    float64(eventTick) / float64(w.Config.TicksPerYear),
+				Kind:    "死亡",
+				Realm:   GetRealm(loserRealm).Name,
+				AgentID: loserID,
+				X:       loserX,
+				Y:       loserY,
+				Reason:  "战斗死亡",
+			})
 
 			qiGain := loserQi * 0.3
 			qiMax := agents.Attrs[winner].Num["qi_max"]

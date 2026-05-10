@@ -23,8 +23,21 @@ func (s *CultivationSystem) Tick(w *engine.World) {
 		s.cellLocks = make([]sync.Mutex, 4096)
 	}
 
+	type breakthroughDeathReq struct {
+		idx    int
+		x, y   int
+		qi     float64
+		realm  int
+		id     int
+		reason string
+	}
+
+	var deathMu sync.Mutex
+	var breakthroughDeaths []breakthroughDeathReq
+
 	engine.ParaForRNG(len(agents.ID), func(start, end, workerIdx int) {
 		rng := engine.WorkerRNG(workerIdx)
+		var localDeaths []breakthroughDeathReq
 		for i := start; i < end; i++ {
 			if !agents.Alive[i] || agents.Kind[i] != "cultivator" {
 				continue
@@ -74,7 +87,7 @@ func (s *CultivationSystem) Tick(w *engine.World) {
 					attrs.Num["realm"] = float64(newRealm)
 					attrs.Num["qi_max"] = newQiMax
 					attrs.Num["qi"] = newQiMax * 0.5
-					attrs.Num["lifespan"] = newRC.Lifespan
+					attrs.Num["lifespan"] = randomLifespan(rng, newRC)
 					attrs.Num["breakthrough_cooldown"] = 0
 					w.Stats.RecordBreakthrough()
 					if newRealm >= 4 {
@@ -91,13 +104,54 @@ func (s *CultivationSystem) Tick(w *engine.World) {
 						})
 					}
 				} else {
+					if realm == 3 && rng.Float64() < cfg.JindanBreakFailDeathChance {
+						localDeaths = append(localDeaths, breakthroughDeathReq{
+							idx:    i,
+							x:      agents.X[i],
+							y:      agents.Y[i],
+							qi:     attrs.Num["qi"],
+							realm:  realm,
+							id:     agents.ID[i],
+							reason: "冲击元婴失败死亡",
+						})
+						continue
+					}
 					attrs.Num["breakthrough_cooldown"] = float64(breakthroughCooldownTicks(cfg, realm))
 				}
 			}
 
 			updateCombatPower(attrs, cfg)
 		}
+		if len(localDeaths) > 0 {
+			deathMu.Lock()
+			breakthroughDeaths = append(breakthroughDeaths, localDeaths...)
+			deathMu.Unlock()
+		}
 	})
+
+	for _, d := range breakthroughDeaths {
+		if !agents.Alive[d.idx] {
+			continue
+		}
+		addSpirit(env, d.x, d.y, returnedDeathQi(cfg, d.qi, 0))
+		agents.Kill(d.idx)
+		w.Stats.RecordDeath()
+		eventTick := w.Clock.Tick + 1
+		w.Stats.RecordNotableEvent(engine.NotableEvent{
+			Tick:    eventTick,
+			Year:    float64(eventTick) / float64(w.Config.TicksPerYear),
+			Kind:    "死亡",
+			Realm:   GetRealm(d.realm).Name,
+			AgentID: d.id,
+			X:       d.x,
+			Y:       d.y,
+			Reason:  d.reason,
+		})
+	}
+}
+
+func randomLifespan(rng *engine.RNG, rc RealmConfig) float64 {
+	return rc.Lifespan * (0.6 + rng.Float64()*0.4)
 }
 
 func breakthroughCooldownTicks(cfg ScenarioConfig, realm int) int {

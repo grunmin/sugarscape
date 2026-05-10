@@ -49,7 +49,7 @@ func (s *LifecycleSystem) Tick(w *engine.World) {
 					realm = 1
 				}
 				rc := GetRealm(realm)
-				lifespan := rc.Lifespan
+				lifespan := individualLifespan(*attrs, rc)
 				consumeCultivatorUpkeep(attrs, cfg)
 
 				x, y := agents.X[i], agents.Y[i]
@@ -90,19 +90,17 @@ func (s *LifecycleSystem) Tick(w *engine.World) {
 			addSpirit(w.Next.Env, d.x, d.y, returnedDeathQi(cfg, d.qi, 0))
 			agents.Kill(d.idx)
 			w.Stats.RecordDeath()
-			if shouldRecordDeathEvent(d.realm, d.reason) {
-				eventTick := w.Clock.Tick + 1
-				w.Stats.RecordNotableEvent(engine.NotableEvent{
-					Tick:    eventTick,
-					Year:    float64(eventTick) / float64(w.Config.TicksPerYear),
-					Kind:    "死亡",
-					Realm:   GetRealm(d.realm).Name,
-					AgentID: d.id,
-					X:       d.x,
-					Y:       d.y,
-					Reason:  d.reason,
-				})
-			}
+			eventTick := w.Clock.Tick + 1
+			w.Stats.RecordNotableEvent(engine.NotableEvent{
+				Tick:    eventTick,
+				Year:    float64(eventTick) / float64(w.Config.TicksPerYear),
+				Kind:    "死亡",
+				Realm:   GetRealm(d.realm).Name,
+				AgentID: d.id,
+				X:       d.x,
+				Y:       d.y,
+				Reason:  d.reason,
+			})
 		}
 	}
 }
@@ -118,8 +116,12 @@ func consumeCultivatorUpkeep(attrs *engine.AttrBag, cfg ScenarioConfig) {
 	}
 }
 
-func shouldRecordDeathEvent(realm int, reason string) bool {
-	return realm >= 4 || (realm >= 3 && reason == "寿元耗尽")
+func individualLifespan(attrs engine.AttrBag, rc RealmConfig) float64 {
+	lifespan := attrs.Num["lifespan"]
+	if lifespan <= 0 {
+		return rc.Lifespan
+	}
+	return lifespan
 }
 
 func lowSpiritDeathEligible(env *engine.Grid, x, y int, attrs engine.AttrBag, cfg ScenarioConfig) bool {

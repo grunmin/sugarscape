@@ -135,7 +135,7 @@ func spawnCultivator(w *engine.World, x, y int) {
 	attrs.Num["qi_max"] = cfg.BaseQi * rc.QiMultiplier
 	updateCombatPower(&attrs, cfg)
 	attrs.Num["age"] = 15 + rng.Float64()*15
-	attrs.Num["lifespan"] = rc.Lifespan
+	attrs.Num["lifespan"] = randomLifespan(rng, rc)
 	attrs.Num["cultivation_speed"] = 0.3 + rng.Float64()*0.7
 	attrs.Num["aggression"] = clampNorm(rng.NormFloat64()*0.15+0.5, 0, 1)
 	attrs.Num["perceived_cp_mult"] = 1.10 + rng.Float64()*0.10

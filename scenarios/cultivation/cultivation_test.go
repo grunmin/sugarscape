@@ -62,6 +62,21 @@ func TestBreakthroughUsesNewRealmQiMax(t *testing.T) {
 	if got["combat_power"] != 450 {
 		t.Fatalf("combat_power = %v, want 450", got["combat_power"])
 	}
+	if got["lifespan"] < 150 || got["lifespan"] > 250 {
+		t.Fatalf("lifespan = %v, want in [150, 250]", got["lifespan"])
+	}
+}
+
+func TestRandomLifespanCanDropByFortyPercent(t *testing.T) {
+	rng := engine.NewRNG(42)
+	for _, rc := range DefaultRealms {
+		for range 100 {
+			got := randomLifespan(rng, rc)
+			if got < rc.Lifespan*0.6 || got > rc.Lifespan {
+				t.Fatalf("%s random lifespan = %v, want in [%v, %v]", rc.Name, got, rc.Lifespan*0.6, rc.Lifespan)
+			}
+		}
+	}
 }
 
 func TestBreakthroughCooldownDoublesByRealm(t *testing.T) {
@@ -156,6 +171,47 @@ func TestBreakthroughToYuanyingRecordsBirthReason(t *testing.T) {
 	}
 }
 
+func TestJindanBreakthroughFailureCanKill(t *testing.T) {
+	oldBreakthrough := DefaultRealms[2].BreakthroughBase
+	DefaultRealms[2].BreakthroughBase = 0.000001
+	defer func() { DefaultRealms[2].BreakthroughBase = oldBreakthrough }()
+
+	for seed := uint64(1); seed <= 200; seed++ {
+		cfg := engine.DefaultEngineConfig()
+		cfg.GridWidth = 3
+		cfg.GridHeight = 3
+		cfg.NumWorkers = 1
+		cfg.Seed = seed
+
+		w := engine.NewWorld(cfg)
+		attrs := engine.NewAttrBag()
+		attrs.Num["realm"] = 3
+		attrs.Num["qi"] = 2000
+		attrs.Num["qi_max"] = 2000
+		attrs.Num["lifespan"] = 500
+		attrs.Num["cultivation_speed"] = 0
+		attrs.Num["breakthrough_cooldown"] = 0
+		w.Next.Agents.Add("cultivator", 1, 1, attrs)
+
+		(&CultivationSystem{}).Tick(w)
+		if w.Next.Agents.Alive[0] {
+			continue
+		}
+
+		events := w.Stats.DrainNotableEvents()
+		if len(events) != 1 {
+			t.Fatalf("notable events = %d, want 1", len(events))
+		}
+		ev := events[0]
+		if ev.Kind != "死亡" || ev.Realm != "金丹" || ev.Reason != "冲击元婴失败死亡" {
+			t.Fatalf("event = %+v, want jindan failed breakthrough death", ev)
+		}
+		return
+	}
+
+	t.Fatal("no jindan failed breakthrough death observed in deterministic seed range")
+}
+
 func TestHuashenNaturalDeathRecordsReason(t *testing.T) {
 	cfg := engine.DefaultEngineConfig()
 	cfg.GridWidth = 3
@@ -231,6 +287,32 @@ func TestJindanNaturalDeathRecordsReason(t *testing.T) {
 	ev := events[0]
 	if ev.Kind != "死亡" || ev.Realm != "金丹" || ev.Reason != "寿元耗尽" {
 		t.Fatalf("event = %+v, want jindan natural death reason", ev)
+	}
+}
+
+func TestLianqiNaturalDeathRecordsReason(t *testing.T) {
+	cfg := engine.DefaultEngineConfig()
+	cfg.GridWidth = 3
+	cfg.GridHeight = 3
+	cfg.NumWorkers = 1
+
+	w := engine.NewWorld(cfg)
+	attrs := engine.NewAttrBag()
+	attrs.Num["realm"] = 1
+	attrs.Num["qi"] = 123
+	attrs.Num["age"] = 120
+	attrs.Num["qi_max"] = 200
+	w.Next.Agents.Add("cultivator", 1, 1, attrs)
+
+	(&LifecycleSystem{}).Tick(w)
+
+	events := w.Stats.DrainNotableEvents()
+	if len(events) != 1 {
+		t.Fatalf("notable events = %d, want 1", len(events))
+	}
+	ev := events[0]
+	if ev.Kind != "死亡" || ev.Realm != "练气" || ev.Reason != "寿元耗尽" {
+		t.Fatalf("event = %+v, want lianqi natural death reason", ev)
 	}
 }
 

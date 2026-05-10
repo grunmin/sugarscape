@@ -40,11 +40,12 @@ type ScenarioConfig struct {
 	NumSpiritSprings     int
 	EnvironmentTickEvery int
 	// Cultivation
-	BaseQi                 float64
-	CultivationSpeed       float64
-	CultivatorUpkeepQiFrac float64 // fraction of realm qi max consumed per tick while alive
-	BreakthroughQiFrac     float64
-	BreakthroughCD         int // ticks of cooldown after failed breakthrough
+	BaseQi                     float64
+	CultivationSpeed           float64
+	CultivatorUpkeepQiFrac     float64 // fraction of realm qi max consumed per tick while alive
+	BreakthroughQiFrac         float64
+	BreakthroughCD             int // ticks of cooldown after failed breakthrough
+	JindanBreakFailDeathChance float64
 	// Combat
 	CombatDeathChance    float64
 	CombatCostBase       float64 // fraction of opponent qi paid by winner in combat
@@ -75,6 +76,7 @@ func DefaultScenarioConfig() ScenarioConfig {
 		CultivatorUpkeepQiFrac:             0.0001,
 		BreakthroughQiFrac:                 0.9,
 		BreakthroughCD:                     100,
+		JindanBreakFailDeathChance:         0.30,
 		CombatDeathChance:                  0.3,
 		CombatCostBase:                     0.20,
 		CombatSelfMinCost:                  0.02,

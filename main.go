@@ -129,6 +129,7 @@ func main() {
 }
 
 func printTickStats(w *engine.World, startTime time.Time, pausedDuration time.Duration, tracker *agentTracker) {
+	printSummarySeparator(w)
 	agents := w.Curr.Agents
 	realms := map[int]int{1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
 	qiStats := highRealmQiStats{}
@@ -157,8 +158,13 @@ func printTickStats(w *engine.World, startTime time.Time, pausedDuration time.Du
 		w.Clock.Tick, w.Clock.Year(), total, w.Curr.Env.TotalMortals(),
 		realms[1], realms[2], realms[3], realms[4], realms[5], elapsed)
 	printHighRealmQiStats(qiStats)
+	printWorldSpiritStats(w.Curr.Env)
 	tracker.printReport(w)
 	printNotableEvents(w.Stats.DrainNotableEvents())
+}
+
+func printSummarySeparator(w *engine.World) {
+	fmt.Printf("\n========== tick %d | year %.1f ==========\n", w.Clock.Tick, w.Clock.Year())
 }
 
 type realmQiStat struct {
@@ -196,6 +202,82 @@ func printHighRealmQiStats(stats highRealmQiStats) {
 		fmt.Printf("%s: n=%d avg=%.1f max=%.1f", names[realm], stat.count, avg, stat.max)
 	}
 	fmt.Println()
+}
+
+type worldSpiritStats struct {
+	total         float64
+	p10           float64
+	p90           float64
+	lowShare      float64
+	highShare     float64
+	lowCellCount  int
+	highCellCount int
+}
+
+func printWorldSpiritStats(env *engine.Grid) {
+	stats := calcWorldSpiritStats(env)
+	fmt.Printf("  天地灵气 total=%.0f p10=%.2f p90=%.2f <=p10=%.2f%%(%d格) >=p90=%.2f%%(%d格)\n",
+		stats.total, stats.p10, stats.p90,
+		stats.lowShare*100, stats.lowCellCount,
+		stats.highShare*100, stats.highCellCount)
+}
+
+func calcWorldSpiritStats(env *engine.Grid) worldSpiritStats {
+	if env == nil || len(env.Cells) == 0 {
+		return worldSpiritStats{}
+	}
+	values := make([]float64, len(env.Cells))
+	total := 0.0
+	for i := range env.Cells {
+		v := env.Cells[i].Env0
+		values[i] = v
+		total += v
+	}
+	sort.Float64s(values)
+	p10 := percentileValue(values, 0.10)
+	p90 := percentileValue(values, 0.90)
+
+	lowSum := 0.0
+	highSum := 0.0
+	lowCells := 0
+	highCells := 0
+	for _, v := range values {
+		if v <= p10 {
+			lowSum += v
+			lowCells++
+		}
+		if v >= p90 {
+			highSum += v
+			highCells++
+		}
+	}
+
+	stats := worldSpiritStats{
+		total:         total,
+		p10:           p10,
+		p90:           p90,
+		lowCellCount:  lowCells,
+		highCellCount: highCells,
+	}
+	if total > 0 {
+		stats.lowShare = lowSum / total
+		stats.highShare = highSum / total
+	}
+	return stats
+}
+
+func percentileValue(sorted []float64, q float64) float64 {
+	if len(sorted) == 0 {
+		return 0
+	}
+	if q <= 0 {
+		return sorted[0]
+	}
+	if q >= 1 {
+		return sorted[len(sorted)-1]
+	}
+	idx := int(q * float64(len(sorted)-1))
+	return sorted[idx]
 }
 
 type agentTracker struct {
@@ -617,75 +699,116 @@ func ioctlTermios(fd int, req uint, termios *syscall.Termios) error {
 }
 
 func printNotableEvents(events []engine.NotableEvent) {
-	type eventCount struct {
-		realm  string
-		kind   string
-		reason string
-		count  int
-	}
-	counts := make(map[string]eventCount)
+	birthCounts := make(map[string]int)
+	deathCounts := make(map[string]map[string]int)
 	for _, ev := range events {
 		if !shouldPrintNotableEvent(ev) {
 			continue
 		}
-		key := ev.Realm + "\x00" + ev.Kind + "\x00" + ev.Reason
-		item := counts[key]
-		item.realm = ev.Realm
-		item.kind = ev.Kind
-		item.reason = ev.Reason
-		item.count++
-		counts[key] = item
+		switch ev.Kind {
+		case "诞生":
+			key := ev.Realm + "\x00" + ev.Reason
+			birthCounts[key]++
+		case "死亡":
+			if deathCounts[ev.Realm] == nil {
+				deathCounts[ev.Realm] = make(map[string]int)
+			}
+			deathCounts[ev.Realm][ev.Reason]++
+		}
 	}
 
-	if len(counts) == 0 {
+	if len(birthCounts) == 0 && len(deathCounts) == 0 {
 		return
 	}
 
-	items := make([]eventCount, 0, len(counts))
-	for _, item := range counts {
-		items = append(items, item)
+	fmt.Println("  事件汇总")
+	printBirthSummary(birthCounts)
+	printDeathSummary(deathCounts)
+}
+
+func printBirthSummary(counts map[string]int) {
+	if len(counts) == 0 {
+		return
+	}
+	type birthItem struct {
+		realm  string
+		reason string
+		count  int
+	}
+	items := make([]birthItem, 0, len(counts))
+	for key, count := range counts {
+		realm, reason := splitEventKey(key)
+		items = append(items, birthItem{realm: realm, reason: reason, count: count})
 	}
 	sort.Slice(items, func(i, j int) bool {
 		if realmRank(items[i].realm) != realmRank(items[j].realm) {
 			return realmRank(items[i].realm) < realmRank(items[j].realm)
 		}
-		if eventKindRank(items[i].kind) != eventKindRank(items[j].kind) {
-			return eventKindRank(items[i].kind) < eventKindRank(items[j].kind)
-		}
 		return items[i].reason < items[j].reason
 	})
 
+	fmt.Print("    诞生: ")
 	for _, item := range items {
-		fmt.Printf("  %s%s: reason=%s count=%d\n", item.realm, item.kind, item.reason, item.count)
+		fmt.Printf("%s(%s)=%d ", item.realm, item.reason, item.count)
+	}
+	fmt.Println()
+}
+
+func printDeathSummary(counts map[string]map[string]int) {
+	if len(counts) == 0 {
+		return
+	}
+	realms := make([]string, 0, len(counts))
+	for realm := range counts {
+		realms = append(realms, realm)
+	}
+	sort.Slice(realms, func(i, j int) bool {
+		return realmRank(realms[i]) < realmRank(realms[j])
+	})
+
+	fmt.Println("    死亡原因:")
+	for _, realm := range realms {
+		reasons := make([]string, 0, len(counts[realm]))
+		for reason := range counts[realm] {
+			reasons = append(reasons, reason)
+		}
+		sort.Strings(reasons)
+		fmt.Printf("      %-4s", realm)
+		for _, reason := range reasons {
+			fmt.Printf(" %s=%d", reason, counts[realm][reason])
+		}
+		fmt.Println()
 	}
 }
 
+func splitEventKey(key string) (string, string) {
+	for i := range key {
+		if key[i] == 0 {
+			return key[:i], key[i+1:]
+		}
+	}
+	return key, ""
+}
+
 func shouldPrintNotableEvent(ev engine.NotableEvent) bool {
-	if ev.Realm == "元婴" || ev.Realm == "化神" {
+	if ev.Kind == "死亡" {
 		return true
 	}
-	return ev.Realm == "金丹" && ev.Kind == "死亡" && ev.Reason == "寿元耗尽"
+	return ev.Kind == "诞生" && (ev.Realm == "元婴" || ev.Realm == "化神")
 }
 
 func realmRank(realm string) int {
 	switch realm {
+	case "练气":
+		return 1
+	case "筑基":
+		return 2
 	case "金丹":
 		return 3
 	case "元婴":
 		return 4
 	case "化神":
 		return 5
-	default:
-		return 99
-	}
-}
-
-func eventKindRank(kind string) int {
-	switch kind {
-	case "诞生":
-		return 0
-	case "死亡":
-		return 1
 	default:
 		return 99
 	}
