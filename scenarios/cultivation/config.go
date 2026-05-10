@@ -14,10 +14,10 @@ type RealmConfig struct {
 }
 
 var DefaultRealms = []RealmConfig{
-	{Name: "练气", Level: 1, QiMultiplier: 2, CombatMultiplier: 1, Lifespan: 120, BreakthroughBase: 0.15, CultSpeedMult: 1.0, MoveSpeed: 1.0, DetectRange: 1},
-	{Name: "筑基", Level: 2, QiMultiplier: 6, CombatMultiplier: 3, Lifespan: 250, BreakthroughBase: 0.08, CultSpeedMult: 1.5, MoveSpeed: 1.3, DetectRange: 2},
-	{Name: "金丹", Level: 3, QiMultiplier: 20, CombatMultiplier: 10, Lifespan: 500, BreakthroughBase: 0.025, CultSpeedMult: 2.0, MoveSpeed: 1.6, DetectRange: 3},
-	{Name: "元婴", Level: 4, QiMultiplier: 60, CombatMultiplier: 30, Lifespan: 1000, BreakthroughBase: 0.015, CultSpeedMult: 2.5, MoveSpeed: 1.9, DetectRange: 4},
+	{Name: "练气", Level: 1, QiMultiplier: 2, CombatMultiplier: 1, Lifespan: 120, BreakthroughBase: 0.1, CultSpeedMult: 1.0, MoveSpeed: 1.0, DetectRange: 1},
+	{Name: "筑基", Level: 2, QiMultiplier: 6, CombatMultiplier: 3, Lifespan: 250, BreakthroughBase: 0.05, CultSpeedMult: 1.5, MoveSpeed: 1.3, DetectRange: 2},
+	{Name: "金丹", Level: 3, QiMultiplier: 20, CombatMultiplier: 10, Lifespan: 500, BreakthroughBase: 0.05, CultSpeedMult: 2.0, MoveSpeed: 1.6, DetectRange: 3},
+	{Name: "元婴", Level: 4, QiMultiplier: 60, CombatMultiplier: 30, Lifespan: 1000, BreakthroughBase: 0.05, CultSpeedMult: 2.5, MoveSpeed: 1.9, DetectRange: 4},
 	{Name: "化神", Level: 5, QiMultiplier: 200, CombatMultiplier: 100, Lifespan: 3000, BreakthroughBase: 0.00, CultSpeedMult: 3.0, MoveSpeed: 2.2, DetectRange: 5},
 }
 

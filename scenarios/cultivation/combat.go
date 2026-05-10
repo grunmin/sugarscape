@@ -1,7 +1,6 @@
 package cultivation
 
 import (
-	"fmt"
 	"math"
 
 	"github.com/runmin/sugarscape/engine"
@@ -69,12 +68,10 @@ func (s *CombatSystem) Tick(w *engine.World) {
 			loserX, loserY := agents.X[loser], agents.Y[loser]
 			loserQi := agents.Attrs[loser].Num["qi"]
 			loserRealm := int(agents.Attrs[loser].Num["realm"])
-			winnerRealm := int(agents.Attrs[winner].Num["realm"])
 			loserID := agents.ID[loser]
-			winnerID := agents.ID[winner]
 			agents.Kill(loser)
 			w.Stats.RecordDeath()
-			if loserRealm == 5 {
+			if loserRealm >= 4 {
 				eventTick := w.Clock.Tick + 1
 				w.Stats.RecordNotableEvent(engine.NotableEvent{
 					Tick:    eventTick,
@@ -84,7 +81,7 @@ func (s *CombatSystem) Tick(w *engine.World) {
 					AgentID: loserID,
 					X:       loserX,
 					Y:       loserY,
-					Reason:  fmt.Sprintf("战斗死亡：被 #%d %s修士击杀", winnerID, GetRealm(winnerRealm).Name),
+					Reason:  "战斗死亡",
 				})
 			}
 

@@ -77,7 +77,7 @@ func (s *CultivationSystem) Tick(w *engine.World) {
 					attrs.Num["lifespan"] = newRC.Lifespan
 					attrs.Num["breakthrough_cooldown"] = 0
 					w.Stats.RecordBreakthrough()
-					if newRealm == 5 {
+					if newRealm >= 4 {
 						eventTick := w.Clock.Tick + 1
 						w.Stats.RecordNotableEvent(engine.NotableEvent{
 							Tick:    eventTick,
@@ -87,7 +87,7 @@ func (s *CultivationSystem) Tick(w *engine.World) {
 							AgentID: agents.ID[i],
 							X:       agents.X[i],
 							Y:       agents.Y[i],
-							Reason:  "突破成功：元婴 -> 化神",
+							Reason:  rc.Name + " -> " + newRC.Name,
 						})
 					}
 				} else {

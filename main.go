@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"sort"
 	"syscall"
 	"time"
 
@@ -125,12 +126,68 @@ func printTickStats(w *engine.World, startTime time.Time) {
 }
 
 func printNotableEvents(events []engine.NotableEvent) {
+	type eventCount struct {
+		realm  string
+		kind   string
+		reason string
+		count  int
+	}
+	counts := make(map[string]eventCount)
 	for _, ev := range events {
-		if ev.Realm != "化神" {
+		if ev.Realm != "元婴" && ev.Realm != "化神" {
 			continue
 		}
-		fmt.Printf("  化神%s: tick=%d year=%.1f id=%d pos=(%d,%d) reason=%s\n",
-			ev.Kind, ev.Tick, ev.Year, ev.AgentID, ev.X, ev.Y, ev.Reason)
+		key := ev.Realm + "\x00" + ev.Kind + "\x00" + ev.Reason
+		item := counts[key]
+		item.realm = ev.Realm
+		item.kind = ev.Kind
+		item.reason = ev.Reason
+		item.count++
+		counts[key] = item
+	}
+
+	if len(counts) == 0 {
+		return
+	}
+
+	items := make([]eventCount, 0, len(counts))
+	for _, item := range counts {
+		items = append(items, item)
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if realmRank(items[i].realm) != realmRank(items[j].realm) {
+			return realmRank(items[i].realm) < realmRank(items[j].realm)
+		}
+		if eventKindRank(items[i].kind) != eventKindRank(items[j].kind) {
+			return eventKindRank(items[i].kind) < eventKindRank(items[j].kind)
+		}
+		return items[i].reason < items[j].reason
+	})
+
+	for _, item := range items {
+		fmt.Printf("  %s%s: reason=%s count=%d\n", item.realm, item.kind, item.reason, item.count)
+	}
+}
+
+func realmRank(realm string) int {
+	switch realm {
+	case "元婴":
+		return 4
+	case "化神":
+		return 5
+	default:
+		return 99
+	}
+}
+
+func eventKindRank(kind string) int {
+	switch kind {
+	case "诞生":
+		return 0
+	case "死亡":
+		return 1
+	default:
+		return 99
 	}
 }
 

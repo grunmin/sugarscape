@@ -110,8 +110,40 @@ func TestBreakthroughToHuashenRecordsBirthReason(t *testing.T) {
 		t.Fatalf("notable events = %d, want 1", len(events))
 	}
 	ev := events[0]
-	if ev.Kind != "诞生" || ev.Realm != "化神" || ev.Reason != "突破成功：元婴 -> 化神" {
+	if ev.Kind != "诞生" || ev.Realm != "化神" || ev.Reason != "元婴 -> 化神" {
 		t.Fatalf("event = %+v, want huashen birth breakthrough reason", ev)
+	}
+}
+
+func TestBreakthroughToYuanyingRecordsBirthReason(t *testing.T) {
+	oldBreakthrough := DefaultRealms[2].BreakthroughBase
+	DefaultRealms[2].BreakthroughBase = 1.0
+	defer func() { DefaultRealms[2].BreakthroughBase = oldBreakthrough }()
+
+	cfg := engine.DefaultEngineConfig()
+	cfg.GridWidth = 3
+	cfg.GridHeight = 3
+	cfg.NumWorkers = 1
+
+	w := engine.NewWorld(cfg)
+	attrs := engine.NewAttrBag()
+	attrs.Num["realm"] = 3
+	attrs.Num["qi"] = 2000
+	attrs.Num["qi_max"] = 2000
+	attrs.Num["lifespan"] = 500
+	attrs.Num["cultivation_speed"] = 0
+	attrs.Num["breakthrough_cooldown"] = 0
+	w.Next.Agents.Add("cultivator", 1, 1, attrs)
+
+	(&CultivationSystem{}).Tick(w)
+
+	events := w.Stats.DrainNotableEvents()
+	if len(events) != 1 {
+		t.Fatalf("notable events = %d, want 1", len(events))
+	}
+	ev := events[0]
+	if ev.Kind != "诞生" || ev.Realm != "元婴" || ev.Reason != "金丹 -> 元婴" {
+		t.Fatalf("event = %+v, want yuanying birth breakthrough reason", ev)
 	}
 }
 
@@ -138,6 +170,32 @@ func TestHuashenNaturalDeathRecordsReason(t *testing.T) {
 	ev := events[0]
 	if ev.Kind != "死亡" || ev.Realm != "化神" || ev.Reason != "寿元耗尽" {
 		t.Fatalf("event = %+v, want huashen natural death reason", ev)
+	}
+}
+
+func TestYuanyingNaturalDeathRecordsReason(t *testing.T) {
+	cfg := engine.DefaultEngineConfig()
+	cfg.GridWidth = 3
+	cfg.GridHeight = 3
+	cfg.NumWorkers = 1
+
+	w := engine.NewWorld(cfg)
+	attrs := engine.NewAttrBag()
+	attrs.Num["realm"] = 4
+	attrs.Num["qi"] = 123
+	attrs.Num["age"] = 1000
+	attrs.Num["qi_max"] = 6000
+	w.Next.Agents.Add("cultivator", 1, 1, attrs)
+
+	(&LifecycleSystem{}).Tick(w)
+
+	events := w.Stats.DrainNotableEvents()
+	if len(events) != 1 {
+		t.Fatalf("notable events = %d, want 1", len(events))
+	}
+	ev := events[0]
+	if ev.Kind != "死亡" || ev.Realm != "元婴" || ev.Reason != "寿元耗尽" {
+		t.Fatalf("event = %+v, want yuanying natural death reason", ev)
 	}
 }
 

@@ -88,7 +88,7 @@ func (s *LifecycleSystem) Tick(w *engine.World) {
 			addSpirit(w.Next.Env, d.x, d.y, d.qi)
 			agents.Kill(d.idx)
 			w.Stats.RecordDeath()
-			if d.realm == 5 {
+			if d.realm >= 4 {
 				eventTick := w.Clock.Tick + 1
 				w.Stats.RecordNotableEvent(engine.NotableEvent{
 					Tick:    eventTick,
