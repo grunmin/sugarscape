@@ -140,7 +140,11 @@ func attackDesireWithResource(attacker, defender engine.AttrBag, cellSpiritFrac 
 	lossFactor := expectedCombatLossFactor(attacker, defender, cfg)
 	base := aggression * sign * math.Sqrt(math.Abs(cpDiffNorm)) * qiFraction(attacker) * conservationFactor(attacker) * lossFactor
 	resource := resourceCompetitionDesire(attacker, defender, cellSpiritFrac, selfCP, enemyCP)
-	return base + resource*resourceCompetitionWeight*math.Sqrt(qiFraction(attacker))*lossFactor
+	desire := base + resource*resourceCompetitionWeight*math.Sqrt(qiFraction(attacker))*lossFactor
+	if desire > 0 {
+		desire *= breakthroughPressureFactor(attacker, cfg)
+	}
+	return desire
 }
 
 func resourceCompetitionDesire(attacker, defender engine.AttrBag, cellSpiritFrac, selfCP, enemyCP float64) float64 {
@@ -229,4 +233,25 @@ func qiFraction(attrs engine.AttrBag) float64 {
 		return 1
 	}
 	return frac
+}
+
+func breakthroughPressureFactor(attrs engine.AttrBag, cfg ScenarioConfig) float64 {
+	lifespan := attrs.Num["lifespan"]
+	if lifespan <= 0 {
+		rc := GetRealm(int(attrs.Num["realm"]))
+		lifespan = individualLifespan(attrs, rc)
+	}
+	if lifespan <= 0 || attrs.Num["age"] < lifespan*0.8 {
+		return 1
+	}
+
+	qiMax := attrs.Num["qi_max"]
+	if qiMax <= 0 {
+		rc := GetRealm(int(attrs.Num["realm"]))
+		qiMax = cfg.BaseQi * rc.QiMultiplier
+	}
+	if qiMax <= 0 || attrs.Num["qi"] >= qiMax*cfg.BreakthroughQiFrac {
+		return 1
+	}
+	return 2
 }

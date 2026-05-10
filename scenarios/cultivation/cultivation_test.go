@@ -500,6 +500,37 @@ func TestAttackDesireScalesWithQi(t *testing.T) {
 	}
 }
 
+func TestBreakthroughPressureDoublesPositiveAttackDesire(t *testing.T) {
+	attacker := engine.NewAttrBag()
+	attacker.Num["realm"] = 1
+	attacker.Num["aggression"] = 1
+	attacker.Num["perceived_cp_mult"] = 1
+	attacker.Num["combat_power"] = 100
+	attacker.Num["qi"] = 90
+	attacker.Num["qi_max"] = 100
+	attacker.Num["age"] = 79
+	attacker.Num["lifespan"] = 100
+	defender := engine.NewAttrBag()
+	defender.Num["combat_power"] = 25
+	defender.Num["qi"] = 25
+
+	normal := attackDesire(attacker, defender)
+	attacker.Num["age"] = 80
+	pressured := attackDesire(attacker, defender)
+
+	if math.Abs(pressured-normal*2) > 1e-12 {
+		t.Fatalf("pressured attack desire = %v, want %v", pressured, normal*2)
+	}
+
+	attacker.Num["qi"] = 95
+	atThresholdOld := attackDesire(attacker, defender)
+	attacker.Num["age"] = 79
+	atThresholdYoung := attackDesire(attacker, defender)
+	if math.Abs(atThresholdOld-atThresholdYoung) > 1e-12 {
+		t.Fatalf("attack desire at breakthrough threshold = %v, want %v", atThresholdOld, atThresholdYoung)
+	}
+}
+
 func TestResourceCompetitionRaisesAttackDesire(t *testing.T) {
 	attacker := engine.NewAttrBag()
 	attacker.Num["realm"] = 3
@@ -607,6 +638,34 @@ func TestLowQiCultivatorMovesLessUnlessCellSpiritIsPoor(t *testing.T) {
 	env.SetEnv0(0, 0, 20)
 	if got := movementProbabilityForCultivator(env, 0, 0, attrs); got != 0.8 {
 		t.Fatalf("movement probability for low qi in poor cell = %v, want 0.8", got)
+	}
+}
+
+func TestBreakthroughPressureDoublesSpiritSeeking(t *testing.T) {
+	env := engine.NewGrid(1, 1)
+	env.SetEnv1(0, 0, 100)
+	env.SetEnv0(0, 0, 50)
+
+	attrs := engine.NewAttrBag()
+	attrs.Num["realm"] = 1
+	attrs.Num["qi"] = 90
+	attrs.Num["qi_max"] = 100
+	attrs.Num["age"] = 80
+	attrs.Num["lifespan"] = 100
+
+	if got := movementProbabilityForCultivator(env, 0, 0, attrs); got != 1 {
+		t.Fatalf("pressured movement probability = %v, want capped at 1", got)
+	}
+	if got := spiritSeekProbability(attrs); got != 1 {
+		t.Fatalf("pressured spirit seek probability = %v, want capped at 1", got)
+	}
+
+	attrs.Num["age"] = 79
+	if got := movementProbabilityForCultivator(env, 0, 0, attrs); got != 0.5 {
+		t.Fatalf("normal movement probability = %v, want 0.5", got)
+	}
+	if got := spiritSeekProbability(attrs); got != 0.7 {
+		t.Fatalf("normal spirit seek probability = %v, want 0.7", got)
 	}
 }
 

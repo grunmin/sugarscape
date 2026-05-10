@@ -103,9 +103,10 @@ func moveCultivator(
 
 		targetX, targetY := x, y
 		roll := rng.Float64()
-		if roll < 0.7 {
+		spiritSeekProb := spiritSeekProbability(agents.Attrs[i])
+		if roll < spiritSeekProb {
 			targetX, targetY = spiritX, spiritY
-		} else if roll < 0.8 {
+		} else if roll < spiritSeekProb+0.1 {
 			targetX, targetY = randomAdjacentPosition(rng, x, y, gridW, gridH)
 		}
 		if targetX == x && targetY == y && spiritX == x && spiritY == y {
@@ -144,10 +145,22 @@ func bestAdjacentSpiritPosition(env *engine.Grid, x, y, gridW, gridH int) (int, 
 
 func movementProbabilityForCultivator(env *engine.Grid, x, y int, attrs engine.AttrBag) float64 {
 	base := movementProbability(env, x, y)
-	if qiFraction(attrs) >= 0.8 || cellSpiritFraction(env, x, y) < 0.25 {
-		return base
+	if qiFraction(attrs) < 0.8 && cellSpiritFraction(env, x, y) >= 0.25 {
+		base *= conservationFactor(attrs)
 	}
-	return base * conservationFactor(attrs)
+	base *= breakthroughPressureFactor(attrs, DefaultScenarioConfig())
+	if base > 1 {
+		return 1
+	}
+	return base
+}
+
+func spiritSeekProbability(attrs engine.AttrBag) float64 {
+	prob := 0.7 * breakthroughPressureFactor(attrs, DefaultScenarioConfig())
+	if prob > 1 {
+		return 1
+	}
+	return prob
 }
 
 func movementProbability(env *engine.Grid, x, y int) float64 {
