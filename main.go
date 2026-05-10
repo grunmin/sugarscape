@@ -336,7 +336,7 @@ func printNotableEvents(events []engine.NotableEvent) {
 	}
 	counts := make(map[string]eventCount)
 	for _, ev := range events {
-		if ev.Realm != "元婴" && ev.Realm != "化神" {
+		if !shouldPrintNotableEvent(ev) {
 			continue
 		}
 		key := ev.Realm + "\x00" + ev.Kind + "\x00" + ev.Reason
@@ -371,8 +371,17 @@ func printNotableEvents(events []engine.NotableEvent) {
 	}
 }
 
+func shouldPrintNotableEvent(ev engine.NotableEvent) bool {
+	if ev.Realm == "元婴" || ev.Realm == "化神" {
+		return true
+	}
+	return ev.Realm == "金丹" && ev.Kind == "死亡" && ev.Reason == "寿元耗尽"
+}
+
 func realmRank(realm string) int {
 	switch realm {
+	case "金丹":
+		return 3
 	case "元婴":
 		return 4
 	case "化神":

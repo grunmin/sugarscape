@@ -70,10 +70,10 @@ func TestBreakthroughCooldownDoublesByRealm(t *testing.T) {
 		realm int
 		want  int
 	}{
-		{realm: 1, want: 20},
-		{realm: 2, want: 40},
-		{realm: 3, want: 80},
-		{realm: 4, want: 160},
+		{realm: 1, want: 100},
+		{realm: 2, want: 200},
+		{realm: 3, want: 400},
+		{realm: 4, want: 800},
 	}
 
 	for _, tc := range cases {
@@ -205,6 +205,32 @@ func TestYuanyingNaturalDeathRecordsReason(t *testing.T) {
 	ev := events[0]
 	if ev.Kind != "死亡" || ev.Realm != "元婴" || ev.Reason != "寿元耗尽" {
 		t.Fatalf("event = %+v, want yuanying natural death reason", ev)
+	}
+}
+
+func TestJindanNaturalDeathRecordsReason(t *testing.T) {
+	cfg := engine.DefaultEngineConfig()
+	cfg.GridWidth = 3
+	cfg.GridHeight = 3
+	cfg.NumWorkers = 1
+
+	w := engine.NewWorld(cfg)
+	attrs := engine.NewAttrBag()
+	attrs.Num["realm"] = 3
+	attrs.Num["qi"] = 123
+	attrs.Num["age"] = 500
+	attrs.Num["qi_max"] = 2000
+	w.Next.Agents.Add("cultivator", 1, 1, attrs)
+
+	(&LifecycleSystem{}).Tick(w)
+
+	events := w.Stats.DrainNotableEvents()
+	if len(events) != 1 {
+		t.Fatalf("notable events = %d, want 1", len(events))
+	}
+	ev := events[0]
+	if ev.Kind != "死亡" || ev.Realm != "金丹" || ev.Reason != "寿元耗尽" {
+		t.Fatalf("event = %+v, want jindan natural death reason", ev)
 	}
 }
 
@@ -546,9 +572,40 @@ func TestNaturalDeathReturnsQiToWorld(t *testing.T) {
 	if w.Next.Agents.Alive[0] {
 		t.Fatal("cultivator is alive, want natural death")
 	}
-	want := before + 123*(1-DefaultScenarioConfig().DeathQiLossFrac)
+	scnCfg := DefaultScenarioConfig()
+	want := before + (123-200*scnCfg.CultivatorUpkeepQiFrac)*(1-scnCfg.DeathQiLossFrac)
 	if got := w.Next.Env.Env0(1, 1); math.Abs(got-want) > 1e-12 {
 		t.Fatalf("cell spirit = %v, want %v", got, want)
+	}
+}
+
+func TestLivingCultivatorConsumesUpkeepQi(t *testing.T) {
+	cfg := engine.DefaultEngineConfig()
+	cfg.GridWidth = 3
+	cfg.GridHeight = 3
+	cfg.NumWorkers = 1
+
+	w := engine.NewWorld(cfg)
+	w.Next.Env.SetEnv0(1, 1, 100)
+	attrs := engine.NewAttrBag()
+	attrs.Num["realm"] = 2
+	attrs.Num["qi"] = 100
+	attrs.Num["qi_max"] = 600
+	attrs.Num["age"] = 30
+	w.Next.Agents.Add("cultivator", 1, 1, attrs)
+
+	beforeSpirit := w.Next.Env.Env0(1, 1)
+	(&LifecycleSystem{}).Tick(w)
+
+	if !w.Next.Agents.Alive[0] {
+		t.Fatal("cultivator died unexpectedly")
+	}
+	wantQi := 100 - 600*DefaultScenarioConfig().CultivatorUpkeepQiFrac
+	if got := w.Next.Agents.Attrs[0].Num["qi"]; math.Abs(got-wantQi) > 1e-12 {
+		t.Fatalf("qi = %v, want %v", got, wantQi)
+	}
+	if got := w.Next.Env.Env0(1, 1); got != beforeSpirit {
+		t.Fatalf("cell spirit = %v, want unchanged %v", got, beforeSpirit)
 	}
 }
 
@@ -600,7 +657,7 @@ func TestLowSpiritExposureCanKillCultivator(t *testing.T) {
 	if w.Next.Agents.Alive[0] {
 		t.Fatal("cultivator survived repeated low-spirit death checks, want eventual death")
 	}
-	want := 20 * (1 - DefaultScenarioConfig().DeathQiLossFrac)
+	want := 0.0
 	if got := w.Next.Env.Env0(0, 0); got < want {
 		t.Fatalf("cell spirit after low-spirit death = %v, want at least %v", got, want)
 	}

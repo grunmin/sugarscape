@@ -50,6 +50,7 @@ func (s *LifecycleSystem) Tick(w *engine.World) {
 				}
 				rc := GetRealm(realm)
 				lifespan := rc.Lifespan
+				consumeCultivatorUpkeep(attrs, cfg)
 
 				x, y := agents.X[i], agents.Y[i]
 				if lowSpiritDeathEligible(env, x, y, *attrs, cfg) {
@@ -89,7 +90,7 @@ func (s *LifecycleSystem) Tick(w *engine.World) {
 			addSpirit(w.Next.Env, d.x, d.y, returnedDeathQi(cfg, d.qi, 0))
 			agents.Kill(d.idx)
 			w.Stats.RecordDeath()
-			if d.realm >= 4 {
+			if shouldRecordDeathEvent(d.realm, d.reason) {
 				eventTick := w.Clock.Tick + 1
 				w.Stats.RecordNotableEvent(engine.NotableEvent{
 					Tick:    eventTick,
@@ -106,7 +107,30 @@ func (s *LifecycleSystem) Tick(w *engine.World) {
 	}
 }
 
+func consumeCultivatorUpkeep(attrs *engine.AttrBag, cfg ScenarioConfig) {
+	cost := realmQiMax(*attrs, cfg) * cfg.CultivatorUpkeepQiFrac
+	if cost <= 0 {
+		return
+	}
+	attrs.Num["qi"] -= cost
+	if attrs.Num["qi"] < 0 {
+		attrs.Num["qi"] = 0
+	}
+}
+
+func shouldRecordDeathEvent(realm int, reason string) bool {
+	return realm >= 4 || (realm >= 3 && reason == "寿元耗尽")
+}
+
 func lowSpiritDeathEligible(env *engine.Grid, x, y int, attrs engine.AttrBag, cfg ScenarioConfig) bool {
+	qiMax := realmQiMax(attrs, cfg)
+	if qiMax <= 0 {
+		return false
+	}
+	return env.Env0(x, y) < qiMax*0.01 && attrs.Num["qi"]/qiMax < cfg.LowSpiritDeathQiFrac
+}
+
+func realmQiMax(attrs engine.AttrBag, cfg ScenarioConfig) float64 {
 	qiMax := attrs.Num["qi_max"]
 	if qiMax <= 0 {
 		realm := int(attrs.Num["realm"])
@@ -115,8 +139,5 @@ func lowSpiritDeathEligible(env *engine.Grid, x, y int, attrs engine.AttrBag, cf
 		}
 		qiMax = cfg.BaseQi * GetRealm(realm).QiMultiplier
 	}
-	if qiMax <= 0 {
-		return false
-	}
-	return env.Env0(x, y) < qiMax*0.01 && attrs.Num["qi"]/qiMax < cfg.LowSpiritDeathQiFrac
+	return qiMax
 }
