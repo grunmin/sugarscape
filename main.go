@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"math/rand"
 	"os"
 	"os/signal"
 	"sort"
@@ -39,6 +40,8 @@ func main() {
 	lastPrint := time.Now()
 	lastPause := time.Now()
 	pausedDuration := time.Duration(0)
+	tracker := newAgentTracker(int64(cfg.Seed)+20260510, 4)
+	tracker.ensureTargets(world.Curr, world.Clock.Tick)
 	interrupts := make(chan os.Signal, 1)
 	signal.Notify(interrupts, os.Interrupt, syscall.SIGTERM)
 	defer signal.Stop(interrupts)
@@ -60,18 +63,19 @@ func main() {
 		}
 
 		world.Tick()
+		tracker.observe(world)
 
 		if world.Clock.Tick%int64(snapshotEvery) == 0 {
 			world.Stats.Snapshot(world.Curr, world.Curr.Env, world.Clock.Tick, world.Clock.Year())
 		}
 
 		if time.Since(lastPrint) >= 5*time.Second {
-			printTickStats(world, startTime, pausedDuration)
+			printTickStats(world, startTime, pausedDuration, tracker)
 			lastPrint = time.Now()
 		}
 
 		if time.Since(lastPause) >= autoPauseEvery {
-			printTickStats(world, startTime, pausedDuration)
+			printTickStats(world, startTime, pausedDuration, tracker)
 			quit, interruptedBySignal, pausedFor := autoPause(world, interrupts)
 			pausedDuration += pausedFor
 			lastPause = time.Now()
@@ -124,7 +128,7 @@ func main() {
 	printFinalSummary(world)
 }
 
-func printTickStats(w *engine.World, startTime time.Time, pausedDuration time.Duration) {
+func printTickStats(w *engine.World, startTime time.Time, pausedDuration time.Duration, tracker *agentTracker) {
 	agents := w.Curr.Agents
 	realms := map[int]int{1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
 	qiStats := highRealmQiStats{}
@@ -153,6 +157,7 @@ func printTickStats(w *engine.World, startTime time.Time, pausedDuration time.Du
 		w.Clock.Tick, w.Clock.Year(), total, w.Curr.Env.TotalMortals(),
 		realms[1], realms[2], realms[3], realms[4], realms[5], elapsed)
 	printHighRealmQiStats(qiStats)
+	tracker.printReport(w)
 	printNotableEvents(w.Stats.DrainNotableEvents())
 }
 
@@ -191,6 +196,290 @@ func printHighRealmQiStats(stats highRealmQiStats) {
 		fmt.Printf("%s: n=%d avg=%.1f max=%.1f", names[realm], stat.count, avg, stat.max)
 	}
 	fmt.Println()
+}
+
+type agentTracker struct {
+	rng   *rand.Rand
+	slots []agentTrackSlot
+}
+
+type agentTrackSlot struct {
+	active     bool
+	dead       bool
+	target     trackedAgentState
+	selectedAt int64
+	deathTick  int64
+
+	ticks         int64
+	movedTicks    int
+	moveSteps     int
+	qiGain        float64
+	qiLoss        float64
+	breakthroughs int
+	firstRealm    int
+	lastRealm     int
+}
+
+type trackedAgentState struct {
+	idx        int
+	id         int
+	x, y       int
+	realm      int
+	qi         float64
+	qiMax      float64
+	age        float64
+	cp         float64
+	aggression float64
+	strategy   string
+	sect       string
+}
+
+func newAgentTracker(seed int64, count int) *agentTracker {
+	if count < 1 {
+		count = 1
+	}
+	return &agentTracker{
+		rng:   rand.New(rand.NewSource(seed)),
+		slots: make([]agentTrackSlot, count),
+	}
+}
+
+func (t *agentTracker) ensureTargets(f *engine.Frame, tick int64) {
+	excluded := t.trackedIDs()
+	for i := range t.slots {
+		if t.slots[i].active || t.slots[i].dead {
+			continue
+		}
+		state, ok := t.randomCultivator(f, excluded)
+		if !ok {
+			return
+		}
+		t.slots[i].start(state, tick)
+		excluded[state.id] = true
+	}
+}
+
+func (t *agentTracker) trackedIDs() map[int]bool {
+	excluded := make(map[int]bool, len(t.slots))
+	for i := range t.slots {
+		if t.slots[i].active || t.slots[i].dead {
+			excluded[t.slots[i].target.id] = true
+		}
+	}
+	return excluded
+}
+
+func (t *agentTracker) observe(w *engine.World) {
+	t.ensureTargets(w.Curr, w.Clock.Tick)
+	for i := range t.slots {
+		t.slots[i].observe(w)
+	}
+}
+
+func (t *agentTracker) printReport(w *engine.World) {
+	t.ensureTargets(w.Curr, w.Clock.Tick)
+	if !t.hasReportableSlot() {
+		fmt.Println("  追踪: 暂无存活修士")
+		return
+	}
+
+	fmt.Printf("  追踪修士 (%d位)\n", len(t.slots))
+	fmt.Printf("    %-2s %-7s %-9s %-4s %-5s %-11s %-14s %-8s %-7s %-13s %-34s\n",
+		"#", "id", "状态", "境界", "年龄", "位置", "灵气", "战力", "攻击", "身份", "本段动作")
+	for i := range t.slots {
+		slot := &t.slots[i]
+		if !slot.active && !slot.dead {
+			continue
+		}
+		fmt.Printf("    %-2d %s\n", i+1, slot.reportLine())
+
+		if slot.dead {
+			slot.dead = false
+			t.ensureTargets(w.Curr, w.Clock.Tick)
+			if slot.active {
+				fmt.Printf("       新目标: id=%d %s (%d,%d)\n",
+					slot.target.id, realmNameForLevel(slot.target.realm), slot.target.x, slot.target.y)
+			}
+			continue
+		}
+		slot.start(slot.target, w.Clock.Tick)
+	}
+}
+
+func (t *agentTracker) hasReportableSlot() bool {
+	for i := range t.slots {
+		if t.slots[i].active || t.slots[i].dead {
+			return true
+		}
+	}
+	return false
+}
+
+func (t *agentTracker) randomCultivator(f *engine.Frame, excluded map[int]bool) (trackedAgentState, bool) {
+	var chosen trackedAgentState
+	count := 0
+	for i := range f.Agents.ID {
+		if !f.Agents.Alive[i] || f.Agents.Kind[i] != "cultivator" || excluded[f.Agents.ID[i]] {
+			continue
+		}
+		count++
+		if t.rng.Intn(count) == 0 {
+			chosen, _ = trackedStateByIndex(f, i)
+		}
+	}
+	return chosen, count > 0
+}
+
+func (s *agentTrackSlot) start(state trackedAgentState, tick int64) {
+	s.active = true
+	s.dead = false
+	s.target = state
+	s.selectedAt = tick
+	s.deathTick = 0
+	s.ticks = 0
+	s.movedTicks = 0
+	s.moveSteps = 0
+	s.qiGain = 0
+	s.qiLoss = 0
+	s.breakthroughs = 0
+	s.firstRealm = state.realm
+	s.lastRealm = state.realm
+}
+
+func (s *agentTrackSlot) observe(w *engine.World) {
+	if !s.active {
+		return
+	}
+	next, ok := trackedStateByIndex(w.Curr, s.target.idx)
+	if !ok || next.id != s.target.id {
+		s.ticks++
+		s.dead = true
+		s.active = false
+		s.deathTick = w.Clock.Tick
+		return
+	}
+
+	s.ticks++
+	if next.x != s.target.x || next.y != s.target.y {
+		s.movedTicks++
+		s.moveSteps += toroidalChebyshevDistance(s.target.x, s.target.y, next.x, next.y, w.Config.GridWidth, w.Config.GridHeight)
+	}
+	qiDelta := next.qi - s.target.qi
+	if qiDelta > 0 {
+		s.qiGain += qiDelta
+	} else if qiDelta < 0 {
+		s.qiLoss -= qiDelta
+	}
+	if next.realm != s.target.realm {
+		s.breakthroughs++
+		s.lastRealm = next.realm
+	}
+	s.target = next
+}
+
+func (s *agentTrackSlot) reportLine() string {
+	qiPct := 0.0
+	if s.target.qiMax > 0 {
+		qiPct = s.target.qi / s.target.qiMax * 100
+	}
+	sect := s.target.sect
+	if sect == "" {
+		sect = "散修"
+	}
+	status := "活"
+	if s.dead {
+		status = fmt.Sprintf("亡@%d", s.deathTick)
+	}
+	return fmt.Sprintf("%-7d %-9s %-4s %-5.1f (%4d,%4d) %-6.0f/%-6.0f %-5.1f%% %-8.0f %-7.3f %-13s %-34s",
+		s.target.id, status, realmNameForLevel(s.target.realm), s.target.age,
+		s.target.x, s.target.y, s.target.qi, s.target.qiMax, qiPct, s.target.cp,
+		s.target.aggression, s.target.strategy+"/"+sect, s.actionSummary())
+}
+
+func (s *agentTrackSlot) actionSummary() string {
+	summary := fmt.Sprintf("%dt 移:%d/%d 静:%d 灵:%+.1f",
+		s.ticks, s.movedTicks, s.moveSteps, s.stayedTicks(), s.qiGain-s.qiLoss)
+	if s.breakthroughs > 0 {
+		summary += fmt.Sprintf(" 突:%s->%s", realmNameForLevel(s.firstRealm), realmNameForLevel(s.lastRealm))
+	}
+	if s.dead {
+		summary += " 死亡"
+	}
+	return summary
+}
+
+func (s *agentTrackSlot) stayedTicks() int64 {
+	stayed := s.ticks - int64(s.movedTicks)
+	if stayed < 0 {
+		return 0
+	}
+	return stayed
+}
+
+func trackedStateByIndex(f *engine.Frame, idx int) (trackedAgentState, bool) {
+	if idx < 0 || idx >= len(f.Agents.ID) || !f.Agents.Alive[idx] || f.Agents.Kind[idx] != "cultivator" {
+		return trackedAgentState{}, false
+	}
+	attrs := f.Agents.Attrs[idx]
+	realm := int(attrs.Num["realm"])
+	if realm < 1 {
+		realm = 1
+	}
+	return trackedAgentState{
+		idx:        idx,
+		id:         f.Agents.ID[idx],
+		x:          f.Agents.X[idx],
+		y:          f.Agents.Y[idx],
+		realm:      realm,
+		qi:         attrs.Num["qi"],
+		qiMax:      attrs.Num["qi_max"],
+		age:        attrs.Num["age"],
+		cp:         attrs.Num["combat_power"],
+		aggression: attrs.Num["aggression"],
+		strategy:   attrs.Str["strategy"],
+		sect:       attrs.Str["sect"],
+	}, true
+}
+
+func toroidalChebyshevDistance(x1, y1, x2, y2, width, height int) int {
+	dx := toroidalAbsDelta(x1, x2, width)
+	dy := toroidalAbsDelta(y1, y2, height)
+	if dx > dy {
+		return dx
+	}
+	return dy
+}
+
+func toroidalAbsDelta(from, to, size int) int {
+	d := absInt(to - from)
+	if size > 0 && d > size/2 {
+		d = size - d
+	}
+	return d
+}
+
+func absInt(v int) int {
+	if v < 0 {
+		return -v
+	}
+	return v
+}
+
+func realmNameForLevel(realm int) string {
+	switch realm {
+	case 1:
+		return "练气"
+	case 2:
+		return "筑基"
+	case 3:
+		return "金丹"
+	case 4:
+		return "元婴"
+	case 5:
+		return "化神"
+	default:
+		return fmt.Sprintf("未知%d", realm)
+	}
 }
 
 func autoPause(w *engine.World, interrupts <-chan os.Signal) (quit bool, interrupted bool, pausedFor time.Duration) {

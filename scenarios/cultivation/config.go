@@ -72,7 +72,7 @@ func DefaultScenarioConfig() ScenarioConfig {
 		EnvironmentTickEvery:               5,
 		BaseQi:                             100,
 		CultivationSpeed:                   0.5,
-		CultivatorUpkeepQiFrac:             0.001,
+		CultivatorUpkeepQiFrac:             0.0001,
 		BreakthroughQiFrac:                 0.9,
 		BreakthroughCD:                     100,
 		CombatDeathChance:                  0.3,
