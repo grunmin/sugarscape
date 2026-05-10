@@ -50,7 +50,7 @@ func Setup(w *engine.World) {
 				}
 				env.SetEnv0(nx, ny, newVal)
 				env.SetEnv1(nx, ny, newVal+25)
-				env.SetEnv2(nx, ny, cfg.SpiritRegenRate+0.5)
+				env.SetEnv2(nx, ny, cfg.SpiritRegenRate+0.05)
 			}
 		}
 	}

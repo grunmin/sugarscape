@@ -92,3 +92,52 @@ func TestStrongerSecondCultivatorAttacksOnFleeThreshold(t *testing.T) {
 	}
 	pendingFights = nil
 }
+
+func TestInteractionOnlyTriggersOnSameCell(t *testing.T) {
+	cfg := engine.DefaultEngineConfig()
+	cfg.GridWidth = 5
+	cfg.GridHeight = 5
+	cfg.NumWorkers = 1
+
+	w := engine.NewWorld(cfg)
+	a := engine.NewAttrBag()
+	a.Num["realm"] = 5
+	a.Num["combat_power"] = 1000
+	b := engine.NewAttrBag()
+	b.Num["realm"] = 1
+	b.Num["combat_power"] = 10
+
+	w.Next.Agents.Add("cultivator", 2, 2, a)
+	w.Next.Agents.Add("cultivator", 3, 2, b)
+	pendingFights = nil
+
+	(&InteractionSystem{}).Tick(w)
+
+	if len(pendingFights) != 0 {
+		t.Fatalf("pending fights = %d, want 0 for adjacent cultivators", len(pendingFights))
+	}
+}
+
+func TestNaturalDeathReturnsQiToWorld(t *testing.T) {
+	cfg := engine.DefaultEngineConfig()
+	cfg.GridWidth = 3
+	cfg.GridHeight = 3
+	cfg.NumWorkers = 1
+
+	w := engine.NewWorld(cfg)
+	attrs := engine.NewAttrBag()
+	attrs.Num["realm"] = 1
+	attrs.Num["qi"] = 123
+	attrs.Num["age"] = 120
+	w.Next.Agents.Add("cultivator", 1, 1, attrs)
+
+	before := w.Next.Env.Env0(1, 1)
+	(&LifecycleSystem{}).Tick(w)
+
+	if w.Next.Agents.Alive[0] {
+		t.Fatal("cultivator is alive, want natural death")
+	}
+	if got := w.Next.Env.Env0(1, 1); got != before+123 {
+		t.Fatalf("cell spirit = %v, want %v", got, before+123)
+	}
+}

@@ -15,6 +15,7 @@ func (s *CombatSystem) Priority() int { return 5 }
 func (s *CombatSystem) Tick(w *engine.World) {
 	cfg := DefaultScenarioConfig()
 	agents := w.Next.Agents
+	env := w.Next.Env
 
 	pendingFightsMu.Lock()
 	fights := pendingFights
@@ -64,12 +65,20 @@ func (s *CombatSystem) Tick(w *engine.World) {
 		updateCombatPower(&agents.Attrs[winner], cfg)
 
 		if w.RNG.Float64() < cfg.CombatDeathChance {
+			loserX, loserY := agents.X[loser], agents.Y[loser]
+			loserQi := agents.Attrs[loser].Num["qi"]
 			agents.Kill(loser)
 			w.Stats.RecordDeath()
 
-			qiGain := agents.Attrs[loser].Num["qi"] * 0.3
-			agents.Attrs[winner].Num["qi"] += qiGain
+			qiGain := loserQi * 0.3
 			qiMax := agents.Attrs[winner].Num["qi_max"]
+			capacity := qiMax - agents.Attrs[winner].Num["qi"]
+			if capacity < 0 {
+				capacity = 0
+			}
+			absorbed := math.Min(qiGain, capacity)
+			agents.Attrs[winner].Num["qi"] += absorbed
+			addSpirit(env, loserX, loserY, loserQi-absorbed)
 			if agents.Attrs[winner].Num["qi"] > qiMax {
 				agents.Attrs[winner].Num["qi"] = qiMax
 			}
@@ -82,4 +91,12 @@ func (s *CombatSystem) Tick(w *engine.World) {
 			updateCombatPower(&agents.Attrs[loser], cfg)
 		}
 	}
+}
+
+func addSpirit(env *engine.Grid, x, y int, amount float64) {
+	if amount <= 0 {
+		return
+	}
+	idx := y*env.Width + x
+	env.Cells[idx].Env0 += amount
 }

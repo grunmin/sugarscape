@@ -22,15 +22,20 @@ func (s *LifecycleSystem) Tick(w *engine.World) {
 		kind  string
 		attrs engine.AttrBag
 	}
+	type deathReq struct {
+		idx  int
+		x, y int
+		qi   float64
+	}
 
 	var mu sync.Mutex
 	var allBirths []birthReq
-	var allDeaths []int
+	var allDeaths []deathReq
 
 	engine.ParaForRNG(len(agents.ID), func(start, end, workerIdx int) {
 		rng := engine.WorkerRNG(workerIdx)
 		var localBirths []birthReq
-		var localDeaths []int
+		var localDeaths []deathReq
 		for i := start; i < end; i++ {
 			if !agents.Alive[i] {
 				continue
@@ -50,7 +55,12 @@ func (s *LifecycleSystem) Tick(w *engine.World) {
 				lifespan := rc.Lifespan
 
 				if attrs.Num["age"] >= lifespan {
-					localDeaths = append(localDeaths, i)
+					localDeaths = append(localDeaths, deathReq{
+						idx: i,
+						x:   agents.X[i],
+						y:   agents.Y[i],
+						qi:  attrs.Num["qi"],
+					})
 					continue
 				}
 
@@ -94,9 +104,10 @@ func (s *LifecycleSystem) Tick(w *engine.World) {
 		}
 	})
 
-	for _, idx := range allDeaths {
-		if agents.Alive[idx] {
-			agents.Kill(idx)
+	for _, d := range allDeaths {
+		if agents.Alive[d.idx] {
+			addSpirit(w.Next.Env, d.x, d.y, d.qi)
+			agents.Kill(d.idx)
 			w.Stats.RecordDeath()
 		}
 	}

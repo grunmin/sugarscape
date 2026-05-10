@@ -54,7 +54,7 @@ func DefaultScenarioConfig() ScenarioConfig {
 		MortalLifespan:     70,
 		MortalConvChance:   0.001,
 		BaseSpiritDensity:  30,
-		SpiritRegenRate:    0.5,
+		SpiritRegenRate:    0.05,
 		SpiritMax:          100,
 		NumSpiritSprings:   20,
 		BaseQi:             100,

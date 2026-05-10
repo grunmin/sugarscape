@@ -43,19 +43,12 @@ func (s *InteractionSystem) Tick(w *engine.World) {
 		if !agents.Alive[i] {
 			continue
 		}
-		kindI := agents.Kind[i]
-
-		detectRange := 0
-		if kindI == "cultivator" {
-			realm := int(agents.Attrs[i].Num["realm"])
-			if realm < 1 {
-				realm = 1
-			}
-			detectRange = GetRealm(realm).DetectRange - 1
+		if agents.Kind[i] != "cultivator" {
+			continue
 		}
 
 		x, y := agents.X[i], agents.Y[i]
-		neighbors := w.Grid.GetNeighbors(x, y, detectRange)
+		neighbors := w.Grid.GetNeighbors(x, y, 0)
 
 		for _, j := range neighbors {
 			if j >= len(agents.ID) || j == i || !agents.Alive[j] {
@@ -85,10 +78,7 @@ func (s *InteractionSystem) resolveInteraction(w *engine.World, i, j int) Pendin
 
 	// Cultivator vs cultivator: cp-based personality-driven.
 	if kindI == "cultivator" && kindJ == "cultivator" {
-		// Same sect: no fight.
-		sectI := agents.Attrs[i].Str["sect"]
-		sectJ := agents.Attrs[j].Str["sect"]
-		if sectI != "" && sectI == sectJ {
+		if sameSect(agents, i, j) {
 			return PendingFight{}
 		}
 
@@ -104,31 +94,32 @@ func (s *InteractionSystem) resolveInteraction(w *engine.World, i, j int) Pendin
 			return PendingFight{Attacker: j, Defender: i}
 		}
 
-		// Compute attack desire using cp_diff_norm with perceived_cp_mult and sqrt.
-		aggression := agents.Attrs[i].Num["aggression"]
-		perceivedMult := agents.Attrs[i].Num["perceived_cp_mult"]
-		if perceivedMult < 1.0 {
-			perceivedMult = 1.15 // default if not set
-		}
-
-		selfCP := cpI * perceivedMult
-		enemyCP := cpJ
-		maxCP := math.Max(selfCP, enemyCP)
-		if maxCP == 0 {
-			maxCP = 1
-		}
-		cpDiffNorm := (selfCP - enemyCP) / maxCP // range [-1, 1]
-
-		sign := 1.0
-		if cpDiffNorm < 0 {
-			sign = -1.0
-		}
-		attackDesire := aggression * sign * math.Sqrt(math.Abs(cpDiffNorm))
-
-		if attackDesire > 0.5 {
+		if attackDesire(agents.Attrs[i], agents.Attrs[j]) > 0.5 {
 			return PendingFight{Attacker: i, Defender: j}
 		}
 	}
 
 	return PendingFight{}
+}
+
+func attackDesire(attacker, defender engine.AttrBag) float64 {
+	aggression := attacker.Num["aggression"]
+	perceivedMult := attacker.Num["perceived_cp_mult"]
+	if perceivedMult < 1.0 {
+		perceivedMult = 1.15
+	}
+
+	selfCP := attacker.Num["combat_power"] * perceivedMult
+	enemyCP := defender.Num["combat_power"]
+	maxCP := math.Max(selfCP, enemyCP)
+	if maxCP == 0 {
+		maxCP = 1
+	}
+	cpDiffNorm := (selfCP - enemyCP) / maxCP
+
+	sign := 1.0
+	if cpDiffNorm < 0 {
+		sign = -1.0
+	}
+	return aggression * sign * math.Sqrt(math.Abs(cpDiffNorm))
 }
