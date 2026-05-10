@@ -45,11 +45,12 @@ type ScenarioConfig struct {
 	BreakthroughQiFrac float64
 	BreakthroughCD     int // ticks of cooldown after failed breakthrough
 	// Combat
-	CombatDeathChance float64
-	CombatCostBase    float64 // fraction of opponent qi paid by winner in combat
-	CombatSelfMinCost float64 // minimum fraction of winner qi paid in combat
-	DeathQiLossFrac   float64 // fraction of dead cultivator qi permanently lost
-	FleeThreshold     float64
+	CombatDeathChance    float64
+	CombatCostBase       float64 // fraction of opponent qi paid by winner in combat
+	CombatSelfMinCost    float64 // minimum fraction of winner qi paid in combat
+	DeathQiLossFrac      float64 // fraction of dead cultivator qi permanently lost
+	LowSpiritDeathQiFrac float64 // qi fraction required before low-spirit exposure can kill
+	FleeThreshold        float64
 }
 
 func DefaultScenarioConfig() ScenarioConfig {
@@ -76,6 +77,7 @@ func DefaultScenarioConfig() ScenarioConfig {
 		CombatCostBase:                     0.20,
 		CombatSelfMinCost:                  0.02,
 		DeathQiLossFrac:                    0.20,
+		LowSpiritDeathQiFrac:               0.20,
 		FleeThreshold:                      3.0,
 	}
 }

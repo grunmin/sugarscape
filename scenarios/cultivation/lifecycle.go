@@ -52,7 +52,7 @@ func (s *LifecycleSystem) Tick(w *engine.World) {
 				lifespan := rc.Lifespan
 
 				x, y := agents.X[i], agents.Y[i]
-				if env.Env0(x, y) < attrs.Num["qi_max"]*0.01 {
+				if lowSpiritDeathEligible(env, x, y, *attrs, cfg) {
 					attrs.Num["low_spirit_years"] += 1.0 / ticksPerYear
 				} else {
 					attrs.Num["low_spirit_years"] = 0
@@ -104,4 +104,19 @@ func (s *LifecycleSystem) Tick(w *engine.World) {
 			}
 		}
 	}
+}
+
+func lowSpiritDeathEligible(env *engine.Grid, x, y int, attrs engine.AttrBag, cfg ScenarioConfig) bool {
+	qiMax := attrs.Num["qi_max"]
+	if qiMax <= 0 {
+		realm := int(attrs.Num["realm"])
+		if realm < 1 {
+			realm = 1
+		}
+		qiMax = cfg.BaseQi * GetRealm(realm).QiMultiplier
+	}
+	if qiMax <= 0 {
+		return false
+	}
+	return env.Env0(x, y) < qiMax*0.01 && attrs.Num["qi"]/qiMax < cfg.LowSpiritDeathQiFrac
 }

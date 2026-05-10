@@ -84,24 +84,23 @@ func (s *InteractionSystem) resolveInteraction(w *engine.World, i, j int) Pendin
 
 		cfg := DefaultScenarioConfig()
 
-		// Flee threshold: power ratio check.
 		cpI := agents.Attrs[i].Num["combat_power"]
 		cpJ := agents.Attrs[j].Num["combat_power"]
+
+		desireI := attackDesire(agents.Attrs[i], agents.Attrs[j])
+		desireJ := attackDesire(agents.Attrs[j], agents.Attrs[i])
 		if cpJ > 0 && cpI/cpJ > cfg.FleeThreshold {
-			if w.RNG.Float64() < qiFraction(agents.Attrs[i])*conservationFactor(agents.Attrs[i])*expectedCombatLossFactor(agents.Attrs[i], agents.Attrs[j], cfg) {
-				return PendingFight{Attacker: i, Defender: j}
-			}
-			return PendingFight{}
+			desireJ = 0
 		}
 		if cpI > 0 && cpJ/cpI > cfg.FleeThreshold {
-			if w.RNG.Float64() < qiFraction(agents.Attrs[j])*conservationFactor(agents.Attrs[j])*expectedCombatLossFactor(agents.Attrs[j], agents.Attrs[i], cfg) {
-				return PendingFight{Attacker: j, Defender: i}
-			}
-			return PendingFight{}
+			desireI = 0
 		}
 
-		if attackDesire(agents.Attrs[i], agents.Attrs[j]) > 0.5 {
+		if desireI > 0.5 && desireI >= desireJ {
 			return PendingFight{Attacker: i, Defender: j}
+		}
+		if desireJ > 0.5 {
+			return PendingFight{Attacker: j, Defender: i}
 		}
 	}
 

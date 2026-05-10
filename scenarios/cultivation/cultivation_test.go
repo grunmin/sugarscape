@@ -248,7 +248,7 @@ func TestReturnedDeathQiLosesFixedFraction(t *testing.T) {
 	}
 }
 
-func TestStrongerSecondCultivatorAttacksOnFleeThreshold(t *testing.T) {
+func TestStrongerSecondCultivatorAttacksWhenDesireIsHigh(t *testing.T) {
 	cfg := engine.DefaultEngineConfig()
 	cfg.GridWidth = 3
 	cfg.GridHeight = 3
@@ -265,6 +265,8 @@ func TestStrongerSecondCultivatorAttacksOnFleeThreshold(t *testing.T) {
 	strong.Num["combat_power"] = 40
 	strong.Num["qi"] = 100
 	strong.Num["qi_max"] = 100
+	strong.Num["aggression"] = 1
+	strong.Num["perceived_cp_mult"] = 1
 
 	w.Next.Agents.Add("cultivator", 1, 1, weak)
 	w.Next.Agents.Add("cultivator", 1, 1, strong)
@@ -281,7 +283,7 @@ func TestStrongerSecondCultivatorAttacksOnFleeThreshold(t *testing.T) {
 	pendingFights = nil
 }
 
-func TestFleeThresholdAttackScalesWithQi(t *testing.T) {
+func TestAttackDesirePreventsExhaustedStrongCultivatorAttack(t *testing.T) {
 	cfg := engine.DefaultEngineConfig()
 	cfg.GridWidth = 3
 	cfg.GridHeight = 3
@@ -298,6 +300,8 @@ func TestFleeThresholdAttackScalesWithQi(t *testing.T) {
 	exhaustedStrong.Num["combat_power"] = 40
 	exhaustedStrong.Num["qi"] = 0
 	exhaustedStrong.Num["qi_max"] = 100
+	exhaustedStrong.Num["aggression"] = 1
+	exhaustedStrong.Num["perceived_cp_mult"] = 1
 
 	w.Next.Agents.Add("cultivator", 1, 1, weak)
 	w.Next.Agents.Add("cultivator", 1, 1, exhaustedStrong)
@@ -581,7 +585,7 @@ func TestLowSpiritExposureCanKillCultivator(t *testing.T) {
 	w.Next.Env.SetEnv0(0, 0, 0)
 	attrs := engine.NewAttrBag()
 	attrs.Num["realm"] = 1
-	attrs.Num["qi"] = 123
+	attrs.Num["qi"] = 20
 	attrs.Num["qi_max"] = 200
 	attrs.Num["age"] = 30
 	attrs.Num["low_spirit_years"] = 13
@@ -596,9 +600,35 @@ func TestLowSpiritExposureCanKillCultivator(t *testing.T) {
 	if w.Next.Agents.Alive[0] {
 		t.Fatal("cultivator survived repeated low-spirit death checks, want eventual death")
 	}
-	want := 123 * (1 - DefaultScenarioConfig().DeathQiLossFrac)
+	want := 20 * (1 - DefaultScenarioConfig().DeathQiLossFrac)
 	if got := w.Next.Env.Env0(0, 0); got < want {
 		t.Fatalf("cell spirit after low-spirit death = %v, want at least %v", got, want)
+	}
+}
+
+func TestLowSpiritExposureRequiresLowQi(t *testing.T) {
+	cfg := engine.DefaultEngineConfig()
+	cfg.GridWidth = 1
+	cfg.GridHeight = 1
+	cfg.NumWorkers = 1
+
+	w := engine.NewWorld(cfg)
+	w.Next.Env.SetEnv0(0, 0, 0)
+	attrs := engine.NewAttrBag()
+	attrs.Num["realm"] = 1
+	attrs.Num["qi"] = 80
+	attrs.Num["qi_max"] = 200
+	attrs.Num["age"] = 30
+	attrs.Num["low_spirit_years"] = 13
+	w.Next.Agents.Add("cultivator", 0, 0, attrs)
+
+	(&LifecycleSystem{}).Tick(w)
+
+	if !w.Next.Agents.Alive[0] {
+		t.Fatal("cultivator died with qi above low-spirit death threshold")
+	}
+	if got := w.Next.Agents.Attrs[0].Num["low_spirit_years"]; got != 0 {
+		t.Fatalf("low_spirit_years = %v, want reset to 0 when qi is above threshold", got)
 	}
 }
 
