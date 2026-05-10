@@ -440,6 +440,44 @@ func TestAttackDesireScalesWithQi(t *testing.T) {
 	}
 }
 
+func TestResourceCompetitionRaisesAttackDesire(t *testing.T) {
+	attacker := engine.NewAttrBag()
+	attacker.Num["realm"] = 3
+	attacker.Num["aggression"] = 1
+	attacker.Num["perceived_cp_mult"] = 1
+	attacker.Num["combat_power"] = 100
+	attacker.Num["qi"] = 500
+	attacker.Num["qi_max"] = 2000
+	defender := engine.NewAttrBag()
+	defender.Num["realm"] = 3
+	defender.Num["combat_power"] = 90
+	defender.Num["qi"] = 1800
+	defender.Num["qi_max"] = 2000
+
+	richCell := attackDesireWithResource(attacker, defender, 0.8)
+	poorCell := attackDesireWithResource(attacker, defender, 0.1)
+	if poorCell <= richCell {
+		t.Fatalf("poor-cell desire = %v, rich-cell desire = %v, want resource competition to raise desire", poorCell, richCell)
+	}
+	if poorCell <= 0.35 {
+		t.Fatalf("poor-cell desire = %v, want above same-realm attack threshold", poorCell)
+	}
+}
+
+func TestSameRealmUsesLowerAttackThreshold(t *testing.T) {
+	a := engine.NewAttrBag()
+	a.Num["realm"] = 3
+	b := engine.NewAttrBag()
+	b.Num["realm"] = 3
+	if got := attackThreshold(a, b); got != 0.35 {
+		t.Fatalf("same realm threshold = %v, want 0.35", got)
+	}
+	b.Num["realm"] = 2
+	if got := attackThreshold(a, b); got != 0.5 {
+		t.Fatalf("different realm threshold = %v, want 0.5", got)
+	}
+}
+
 func TestExpectedCombatLossFactorPenalizesRiskyFights(t *testing.T) {
 	cfg := DefaultScenarioConfig()
 

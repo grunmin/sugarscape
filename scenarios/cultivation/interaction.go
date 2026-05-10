@@ -20,6 +20,8 @@ var (
 	pendingFightsMu sync.Mutex
 )
 
+const resourceCompetitionWeight = 4.0
+
 type PendingFight struct {
 	Attacker int
 	Defender int
@@ -74,6 +76,7 @@ func (s *InteractionSystem) Tick(w *engine.World) {
 
 func (s *InteractionSystem) resolveInteraction(w *engine.World, i, j int) PendingFight {
 	agents := w.Next.Agents
+	env := w.Next.Env
 	kindI, kindJ := agents.Kind[i], agents.Kind[j]
 
 	// Cultivator vs cultivator: cp-based personality-driven.
@@ -87,8 +90,10 @@ func (s *InteractionSystem) resolveInteraction(w *engine.World, i, j int) Pendin
 		cpI := agents.Attrs[i].Num["combat_power"]
 		cpJ := agents.Attrs[j].Num["combat_power"]
 
-		desireI := attackDesire(agents.Attrs[i], agents.Attrs[j])
-		desireJ := attackDesire(agents.Attrs[j], agents.Attrs[i])
+		x, y := agents.X[i], agents.Y[i]
+		cellSpiritFrac := cellSpiritFraction(env, x, y)
+		desireI := attackDesireWithResource(agents.Attrs[i], agents.Attrs[j], cellSpiritFrac)
+		desireJ := attackDesireWithResource(agents.Attrs[j], agents.Attrs[i], cellSpiritFrac)
 		if cpJ > 0 && cpI/cpJ > cfg.FleeThreshold {
 			desireJ = 0
 		}
@@ -96,10 +101,11 @@ func (s *InteractionSystem) resolveInteraction(w *engine.World, i, j int) Pendin
 			desireI = 0
 		}
 
-		if desireI > 0.5 && desireI >= desireJ {
+		threshold := attackThreshold(agents.Attrs[i], agents.Attrs[j])
+		if desireI > threshold && desireI >= desireJ {
 			return PendingFight{Attacker: i, Defender: j}
 		}
-		if desireJ > 0.5 {
+		if desireJ > threshold {
 			return PendingFight{Attacker: j, Defender: i}
 		}
 	}
@@ -108,6 +114,10 @@ func (s *InteractionSystem) resolveInteraction(w *engine.World, i, j int) Pendin
 }
 
 func attackDesire(attacker, defender engine.AttrBag) float64 {
+	return attackDesireWithResource(attacker, defender, 1)
+}
+
+func attackDesireWithResource(attacker, defender engine.AttrBag, cellSpiritFrac float64) float64 {
 	cfg := DefaultScenarioConfig()
 	aggression := attacker.Num["aggression"]
 	perceivedMult := attacker.Num["perceived_cp_mult"]
@@ -128,7 +138,49 @@ func attackDesire(attacker, defender engine.AttrBag) float64 {
 		sign = -1.0
 	}
 	lossFactor := expectedCombatLossFactor(attacker, defender, cfg)
-	return aggression * sign * math.Sqrt(math.Abs(cpDiffNorm)) * qiFraction(attacker) * conservationFactor(attacker) * lossFactor
+	base := aggression * sign * math.Sqrt(math.Abs(cpDiffNorm)) * qiFraction(attacker) * conservationFactor(attacker) * lossFactor
+	resource := resourceCompetitionDesire(attacker, defender, cellSpiritFrac, selfCP, enemyCP)
+	return base + resource*resourceCompetitionWeight*math.Sqrt(qiFraction(attacker))*lossFactor
+}
+
+func resourceCompetitionDesire(attacker, defender engine.AttrBag, cellSpiritFrac, selfCP, enemyCP float64) float64 {
+	if cellSpiritFrac >= 0.5 || defender.Num["qi"] <= attacker.Num["qi"] {
+		return 0
+	}
+	if enemyCP <= 0 {
+		enemyCP = 1
+	}
+	relativePower := selfCP / enemyCP
+	if relativePower < 0.75 {
+		return 0
+	}
+	localScarcity := (0.5 - cellSpiritFrac) / 0.5
+	qiMax := math.Max(attacker.Num["qi_max"], defender.Num["qi_max"])
+	if qiMax <= 0 {
+		qiMax = math.Max(attacker.Num["qi"], defender.Num["qi"])
+	}
+	if qiMax <= 0 {
+		return 0
+	}
+	lootGap := (defender.Num["qi"] - attacker.Num["qi"]) / qiMax
+	if lootGap <= 0 {
+		return 0
+	}
+	if lootGap > 1 {
+		lootGap = 1
+	}
+	powerFactor := relativePower
+	if powerFactor > 1 {
+		powerFactor = 1
+	}
+	return attacker.Num["aggression"] * localScarcity * lootGap * powerFactor
+}
+
+func attackThreshold(a, b engine.AttrBag) float64 {
+	if int(a.Num["realm"]) == int(b.Num["realm"]) {
+		return 0.35
+	}
+	return 0.5
 }
 
 func conservationFactor(attrs engine.AttrBag) float64 {
