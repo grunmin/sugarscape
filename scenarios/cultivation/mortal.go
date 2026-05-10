@@ -32,8 +32,8 @@ func (s *MortalSystem) Tick(w *engine.World) {
 
 			expectedDeaths := pop * ratePerTick
 			actualDeaths := expectedDeaths * (0.8 + rng.Float64()*0.4)
-			expectedBirths := pop * ratePerTick
-			actualBirths := expectedBirths * (0.8 + rng.Float64()*0.4)
+			birthMult := cfg.MortalBirthRateMin + rng.Float64()*(cfg.MortalBirthRateMax-cfg.MortalBirthRateMin)
+			actualBirths := pop * ratePerTick * birthMult
 			pop = pop - actualDeaths + actualBirths
 
 			expectedConvs := pop * convPerTick

@@ -64,6 +64,25 @@ func TestBreakthroughUsesNewRealmQiMax(t *testing.T) {
 	}
 }
 
+func TestBreakthroughCooldownDoublesByRealm(t *testing.T) {
+	cfg := DefaultScenarioConfig()
+	cases := []struct {
+		realm int
+		want  int
+	}{
+		{realm: 1, want: 20},
+		{realm: 2, want: 40},
+		{realm: 3, want: 80},
+		{realm: 4, want: 160},
+	}
+
+	for _, tc := range cases {
+		if got := breakthroughCooldownTicks(cfg, tc.realm); got != tc.want {
+			t.Fatalf("realm %d cooldown = %d, want %d", tc.realm, got, tc.want)
+		}
+	}
+}
+
 func TestStrongerSecondCultivatorAttacksOnFleeThreshold(t *testing.T) {
 	cfg := engine.DefaultEngineConfig()
 	cfg.GridWidth = 3
@@ -139,5 +158,38 @@ func TestNaturalDeathReturnsQiToWorld(t *testing.T) {
 	}
 	if got := w.Next.Env.Env0(1, 1); got != before+123 {
 		t.Fatalf("cell spirit = %v, want %v", got, before+123)
+	}
+}
+
+func TestLifecycleDoesNotBirthCultivators(t *testing.T) {
+	cfg := engine.DefaultEngineConfig()
+	cfg.GridWidth = 3
+	cfg.GridHeight = 3
+	cfg.NumWorkers = 1
+
+	w := engine.NewWorld(cfg)
+	attrs := engine.NewAttrBag()
+	attrs.Num["realm"] = 1
+	attrs.Num["qi"] = 100
+	attrs.Num["age"] = 30
+	w.Next.Agents.Add("cultivator", 1, 1, attrs)
+
+	(&LifecycleSystem{}).Tick(w)
+
+	if got := len(w.Next.Agents.ID); got != 1 {
+		t.Fatalf("cultivator slots = %d, want 1", got)
+	}
+	if !w.Next.Agents.Alive[0] {
+		t.Fatal("cultivator died unexpectedly")
+	}
+}
+
+func TestMortalBirthRateRange(t *testing.T) {
+	cfg := DefaultScenarioConfig()
+	if cfg.MortalBirthRateMin != 0.9 {
+		t.Fatalf("MortalBirthRateMin = %v, want 0.9", cfg.MortalBirthRateMin)
+	}
+	if cfg.MortalBirthRateMax != 1.2 {
+		t.Fatalf("MortalBirthRateMax = %v, want 1.2", cfg.MortalBirthRateMax)
 	}
 }

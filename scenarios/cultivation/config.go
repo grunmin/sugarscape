@@ -24,10 +24,12 @@ var DefaultRealms = []RealmConfig{
 // ScenarioConfig holds all configurable parameters for the cultivation world.
 type ScenarioConfig struct {
 	// Mortal world
-	MortalBaseDensity float64 // average mortals per cell
-	NumTribes         int     // number of tribal centers
-	MortalLifespan    float64 // years
-	MortalConvChance  float64 // lifetime probability of becoming cultivator
+	MortalBaseDensity  float64 // average mortals per cell
+	NumTribes          int     // number of tribal centers
+	MortalLifespan     float64 // years
+	MortalConvChance   float64 // lifetime probability of becoming cultivator
+	MortalBirthRateMin float64 // multiplier on base mortality rate
+	MortalBirthRateMax float64 // multiplier on base mortality rate
 	// Spirit density
 	BaseSpiritDensity float64
 	SpiritRegenRate   float64
@@ -42,9 +44,6 @@ type ScenarioConfig struct {
 	CombatDeathChance float64
 	CombatCostBase    float64 // fraction of winner's qi lost in combat
 	FleeThreshold     float64
-	// Lifecycle
-	BaseBirthRate float64
-	BirthCooldown float64
 }
 
 func DefaultScenarioConfig() ScenarioConfig {
@@ -53,6 +52,8 @@ func DefaultScenarioConfig() ScenarioConfig {
 		NumTribes:          200,
 		MortalLifespan:     70,
 		MortalConvChance:   0.001,
+		MortalBirthRateMin: 0.9,
+		MortalBirthRateMax: 1.2,
 		BaseSpiritDensity:  30,
 		SpiritRegenRate:    0.05,
 		SpiritMax:          100,
@@ -64,8 +65,6 @@ func DefaultScenarioConfig() ScenarioConfig {
 		CombatDeathChance:  0.3,
 		CombatCostBase:     0.05,
 		FleeThreshold:      3.0,
-		BaseBirthRate:      0.005,
-		BirthCooldown:      20,
 	}
 }
 

@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/runmin/sugarscape/engine"
@@ -26,16 +28,29 @@ func main() {
 		scnCfg.NumTribes, scnCfg.MortalConvChance, initElapsed.Round(time.Millisecond))
 	fmt.Println()
 
-	maxTicks := int64(1000)
+	maxTicks := int64(300000)
 	snapshotEvery := 20
 	startTime := time.Now()
 	lastPrint := time.Now()
+	interrupts := make(chan os.Signal, 1)
+	signal.Notify(interrupts, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(interrupts)
+	interrupted := false
 
 	fmt.Printf("%-6s %-6s %-8s %-12s %-8s %-8s %-8s %-8s %-8s %-10s\n",
 		"tick", "year", "cultiv", "mortals", "练气", "筑基", "金丹", "元婴", "化神", "elapsed")
 	fmt.Println("------ ------ -------- ------------ -------- -------- -------- -------- -------- ----------")
 
 	for tick := int64(0); tick < maxTicks; tick++ {
+		select {
+		case <-interrupts:
+			interrupted = true
+		default:
+		}
+		if interrupted {
+			break
+		}
+
 		world.Tick()
 
 		if world.Clock.Tick%int64(snapshotEvery) == 0 {
@@ -50,8 +65,15 @@ func main() {
 
 	elapsed := time.Since(startTime)
 	fmt.Println()
-	fmt.Printf("模拟完成，耗时 %s (%.2f ms/tick)\n", elapsed.Round(time.Millisecond),
-		float64(elapsed.Milliseconds())/float64(maxTicks))
+	if interrupted {
+		fmt.Printf("收到中断信号，已在 tick %d 正常退出。\n", world.Clock.Tick)
+	}
+	ticksRun := world.Clock.Tick
+	msPerTick := 0.0
+	if ticksRun > 0 {
+		msPerTick = float64(elapsed.Milliseconds()) / float64(ticksRun)
+	}
+	fmt.Printf("模拟完成，耗时 %s (%.2f ms/tick)\n", elapsed.Round(time.Millisecond), msPerTick)
 
 	// Final snapshot.
 	if len(world.Stats.Snapshots) == 0 ||
@@ -118,11 +140,57 @@ func printFinalSummary(w *engine.World) {
 		fmt.Printf("  %s: %d\n", name, last.RealmCounts[name])
 	}
 	fmt.Printf("平均攻击性: %.4f\n", last.AvgAggression)
+	fmt.Println("各境界平均攻击性:")
+	for _, rs := range realmAggressionStats(w) {
+		if rs.Count == 0 {
+			fmt.Printf("  %s: n=0 avg=0.0000\n", rs.Name)
+		} else {
+			fmt.Printf("  %s: n=%d avg=%.4f\n", rs.Name, rs.Count, rs.Avg)
+		}
+	}
 	fmt.Printf("总死亡: %d  总出生: %d  总突破: %d  凡人转化: %d\n",
 		sumInt(snaps, func(dp engine.DataPoint) int { return dp.Deaths }),
 		sumInt(snaps, func(dp engine.DataPoint) int { return dp.Births }),
 		sumInt(snaps, func(dp engine.DataPoint) int { return dp.Breakthroughs }),
 		sumInt(snaps, func(dp engine.DataPoint) int { return dp.MortalConversions }))
+}
+
+type realmAggressionStat struct {
+	Name  string
+	Count int
+	Avg   float64
+}
+
+func realmAggressionStats(w *engine.World) []realmAggressionStat {
+	names := []string{"练气", "筑基", "金丹", "元婴", "化神"}
+	counts := make([]int, len(names))
+	sums := make([]float64, len(names))
+	agents := w.Curr.Agents
+
+	for i := range agents.ID {
+		if !agents.Alive[i] || agents.Kind[i] != "cultivator" {
+			continue
+		}
+		realm := int(agents.Attrs[i].Num["realm"])
+		if realm < 1 {
+			realm = 1
+		}
+		if realm > len(names) {
+			realm = len(names)
+		}
+		idx := realm - 1
+		counts[idx]++
+		sums[idx] += agents.Attrs[i].Num["aggression"]
+	}
+
+	out := make([]realmAggressionStat, len(names))
+	for i, name := range names {
+		out[i] = realmAggressionStat{Name: name, Count: counts[i]}
+		if counts[i] > 0 {
+			out[i].Avg = sums[i] / float64(counts[i])
+		}
+	}
+	return out
 }
 
 func sumInt(snaps []engine.DataPoint, fn func(engine.DataPoint) int) int {

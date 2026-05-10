@@ -75,13 +75,20 @@ func (s *CultivationSystem) Tick(w *engine.World) {
 					attrs.Num["breakthrough_cooldown"] = 0
 					w.Stats.RecordBreakthrough()
 				} else {
-					attrs.Num["breakthrough_cooldown"] = float64(cfg.BreakthroughCD)
+					attrs.Num["breakthrough_cooldown"] = float64(breakthroughCooldownTicks(cfg, realm))
 				}
 			}
 
 			updateCombatPower(attrs, cfg)
 		}
 	})
+}
+
+func breakthroughCooldownTicks(cfg ScenarioConfig, realm int) int {
+	if realm < 1 {
+		realm = 1
+	}
+	return cfg.BreakthroughCD << (realm - 1)
 }
 
 func updateCombatPower(attrs *engine.AttrBag, cfg ScenarioConfig) {
