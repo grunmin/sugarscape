@@ -7,6 +7,7 @@ import (
 // Setup initializes the cultivation world scenario.
 func Setup(w *engine.World) {
 	cfg := DefaultScenarioConfig()
+	initializeSectWeights(w.RNG)
 
 	// --- Initialize environment: spirit density ---
 	env := w.Curr.Env

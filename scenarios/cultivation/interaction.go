@@ -87,17 +87,19 @@ func (s *InteractionSystem) resolveInteraction(w *engine.World, i, j int) Pendin
 
 		cfg := DefaultScenarioConfig()
 
-		cpI := agents.Attrs[i].Num["combat_power"]
-		cpJ := agents.Attrs[j].Num["combat_power"]
-
 		x, y := agents.X[i], agents.Y[i]
+		cellAgents := w.Grid.GetNeighbors(x, y, 0)
 		cellSpiritFrac := cellSpiritFraction(env, x, y)
-		desireI := attackDesireWithResource(agents.Attrs[i], agents.Attrs[j], cellSpiritFrac)
-		desireJ := attackDesireWithResource(agents.Attrs[j], agents.Attrs[i], cellSpiritFrac)
-		if cpJ > 0 && cpI/cpJ > cfg.FleeThreshold {
+		selfI := effectiveSelfCombatPower(agents, cellAgents, i, cfg)
+		enemyForI := effectiveObservedCombatPower(agents, cellAgents, j, cfg)
+		selfJ := effectiveSelfCombatPower(agents, cellAgents, j, cfg)
+		enemyForJ := effectiveObservedCombatPower(agents, cellAgents, i, cfg)
+		desireI := attackDesireWithEffectiveCP(agents.Attrs[i], agents.Attrs[j], cellSpiritFrac, selfI, enemyForI)
+		desireJ := attackDesireWithEffectiveCP(agents.Attrs[j], agents.Attrs[i], cellSpiritFrac, selfJ, enemyForJ)
+		if enemyForJ > 0 && enemyForJ/selfJ > cfg.FleeThreshold {
 			desireJ = 0
 		}
-		if cpI > 0 && cpJ/cpI > cfg.FleeThreshold {
+		if enemyForI > 0 && enemyForI/selfI > cfg.FleeThreshold {
 			desireI = 0
 		}
 
@@ -118,15 +120,14 @@ func attackDesire(attacker, defender engine.AttrBag) float64 {
 }
 
 func attackDesireWithResource(attacker, defender engine.AttrBag, cellSpiritFrac float64) float64 {
+	selfCP := perceivedCombatPower(attacker)
+	enemyCP := defender.Num["combat_power"]
+	return attackDesireWithEffectiveCP(attacker, defender, cellSpiritFrac, selfCP, enemyCP)
+}
+
+func attackDesireWithEffectiveCP(attacker, defender engine.AttrBag, cellSpiritFrac, selfCP, enemyCP float64) float64 {
 	cfg := DefaultScenarioConfig()
 	aggression := attacker.Num["aggression"]
-	perceivedMult := attacker.Num["perceived_cp_mult"]
-	if perceivedMult < 1.0 {
-		perceivedMult = 1.15
-	}
-
-	selfCP := attacker.Num["combat_power"] * perceivedMult
-	enemyCP := defender.Num["combat_power"]
 	maxCP := math.Max(selfCP, enemyCP)
 	if maxCP == 0 {
 		maxCP = 1
@@ -137,9 +138,9 @@ func attackDesireWithResource(attacker, defender engine.AttrBag, cellSpiritFrac 
 	if cpDiffNorm < 0 {
 		sign = -1.0
 	}
-	lossFactor := expectedCombatLossFactor(attacker, defender, cfg)
+	lossFactor := expectedCombatLossFactorWithCP(attacker, defender, cfg, selfCP, enemyCP)
 	base := aggression * sign * math.Sqrt(math.Abs(cpDiffNorm)) * qiFraction(attacker) * conservationFactor(attacker) * lossFactor
-	resource := resourceCompetitionDesire(attacker, defender, cellSpiritFrac, selfCP, enemyCP)
+	resource := resourceCompetitionDesire(attacker, defender, cellSpiritFrac, selfCP, enemyCP, cfg)
 	desire := base + resource*resourceCompetitionWeight*math.Sqrt(qiFraction(attacker))*lossFactor
 	if desire > 0 {
 		desire *= breakthroughPressureFactor(attacker, cfg)
@@ -147,8 +148,8 @@ func attackDesireWithResource(attacker, defender engine.AttrBag, cellSpiritFrac 
 	return desire
 }
 
-func resourceCompetitionDesire(attacker, defender engine.AttrBag, cellSpiritFrac, selfCP, enemyCP float64) float64 {
-	if cellSpiritFrac >= 0.5 || defender.Num["qi"] <= attacker.Num["qi"] {
+func resourceCompetitionDesire(attacker, defender engine.AttrBag, cellSpiritFrac, selfCP, enemyCP float64, cfg ScenarioConfig) float64 {
+	if defender.Num["qi"] <= attacker.Num["qi"] {
 		return 0
 	}
 	if enemyCP <= 0 {
@@ -158,7 +159,18 @@ func resourceCompetitionDesire(attacker, defender engine.AttrBag, cellSpiritFrac
 	if relativePower < 0.75 {
 		return 0
 	}
-	localScarcity := (0.5 - cellSpiritFrac) / 0.5
+	localScarcity := 0.0
+	if cellSpiritFrac < 0.5 {
+		localScarcity = (0.5 - cellSpiritFrac) / 0.5
+	}
+	breakthroughPressure := breakthroughResourcePressure(attacker, cfg)
+	competitionPressure := localScarcity + breakthroughPressure
+	if competitionPressure <= 0 {
+		return 0
+	}
+	if competitionPressure > 1.5 {
+		competitionPressure = 1.5
+	}
 	qiMax := math.Max(attacker.Num["qi_max"], defender.Num["qi_max"])
 	if qiMax <= 0 {
 		qiMax = math.Max(attacker.Num["qi"], defender.Num["qi"])
@@ -177,7 +189,7 @@ func resourceCompetitionDesire(attacker, defender engine.AttrBag, cellSpiritFrac
 	if powerFactor > 1 {
 		powerFactor = 1
 	}
-	return attacker.Num["aggression"] * localScarcity * lootGap * powerFactor
+	return attacker.Num["aggression"] * competitionPressure * lootGap * powerFactor
 }
 
 func attackThreshold(a, b engine.AttrBag) float64 {
@@ -196,8 +208,10 @@ func conservationFactor(attrs engine.AttrBag) float64 {
 }
 
 func expectedCombatLossFactor(attacker, defender engine.AttrBag, cfg ScenarioConfig) float64 {
-	attackerCP := attacker.Num["combat_power"]
-	defenderCP := defender.Num["combat_power"]
+	return expectedCombatLossFactorWithCP(attacker, defender, cfg, attacker.Num["combat_power"], defender.Num["combat_power"])
+}
+
+func expectedCombatLossFactorWithCP(attacker, defender engine.AttrBag, cfg ScenarioConfig, attackerCP, defenderCP float64) float64 {
 	total := attackerCP + defenderCP
 	if total <= 0 {
 		return 1
@@ -218,6 +232,52 @@ func expectedCombatLossFactor(attacker, defender engine.AttrBag, cfg ScenarioCon
 		return 0
 	}
 	return 1 - expectedLossFrac
+}
+
+func breakthroughResourcePressure(attrs engine.AttrBag, cfg ScenarioConfig) float64 {
+	threshold := cfg.BreakthroughQiFrac
+	if threshold <= 0 {
+		return 0
+	}
+	frac := qiFraction(attrs)
+	if frac >= threshold {
+		return 0
+	}
+	pressure := frac / threshold
+	return pressure * pressure
+}
+
+func perceivedCombatPower(attrs engine.AttrBag) float64 {
+	perceivedMult := attrs.Num["perceived_cp_mult"]
+	if perceivedMult < 1.0 {
+		perceivedMult = 1.15
+	}
+	return attrs.Num["combat_power"] * perceivedMult
+}
+
+func effectiveSelfCombatPower(agents *engine.AgentStore, cellAgents []int, idx int, cfg ScenarioConfig) float64 {
+	return perceivedCombatPower(agents.Attrs[idx]) + sameSectCellCombatPower(agents, cellAgents, idx)*cfg.SectAllyCombatAssist
+}
+
+func effectiveObservedCombatPower(agents *engine.AgentStore, cellAgents []int, idx int, cfg ScenarioConfig) float64 {
+	return agents.Attrs[idx].Num["combat_power"] + sameSectCellCombatPower(agents, cellAgents, idx)*cfg.SectAllyCombatAssist
+}
+
+func sameSectCellCombatPower(agents *engine.AgentStore, cellAgents []int, idx int) float64 {
+	sect := agents.Attrs[idx].Str["sect"]
+	if sect == "" {
+		return 0
+	}
+	total := 0.0
+	for _, j := range cellAgents {
+		if j == idx || !agents.Alive[j] || agents.Kind[j] != "cultivator" {
+			continue
+		}
+		if agents.Attrs[j].Str["sect"] == sect {
+			total += agents.Attrs[j].Num["combat_power"]
+		}
+	}
+	return total
 }
 
 func qiFraction(attrs engine.AttrBag) float64 {

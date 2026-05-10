@@ -143,16 +143,48 @@ func spawnCultivator(w *engine.World, x, y int) {
 
 	strategies := []string{"aggressive", "peaceful", "merchant", "hermit", "bandit"}
 	attrs.Str["strategy"] = strategies[rng.Intn(len(strategies))]
-	if rng.Float64() < 0.9 {
-		attrs.Str["sect"] = ""
-	} else {
-		attrs.Str["sect"] = sectNames[rng.Intn(len(sectNames))]
+	if rng.Float64() < cfg.SectMembershipChance {
+		attrs.Str["sect"] = weightedSectName(rng)
 	}
 
 	w.Next.Agents.Add("cultivator", x, y, attrs)
 }
 
-var sectNames = []string{"宗门1", "宗门2", "宗门3", "宗门4"}
+var (
+	sectNames   = []string{"宗门1", "宗门2", "宗门3", "宗门4", "宗门5", "宗门6", "宗门7"}
+	sectWeights []float64
+)
+
+func initializeSectWeights(rng *engine.RNG) {
+	sectWeights = make([]float64, len(sectNames))
+	total := 0.0
+	for i := range sectWeights {
+		weight := 0.05 + rng.Float64()*rng.Float64()
+		sectWeights[i] = weight
+		total += weight
+	}
+	if total <= 0 {
+		return
+	}
+	for i := range sectWeights {
+		sectWeights[i] /= total
+	}
+}
+
+func weightedSectName(rng *engine.RNG) string {
+	if len(sectWeights) != len(sectNames) {
+		initializeSectWeights(rng)
+	}
+	roll := rng.Float64()
+	acc := 0.0
+	for i, weight := range sectWeights {
+		acc += weight
+		if roll <= acc {
+			return sectNames[i]
+		}
+	}
+	return sectNames[len(sectNames)-1]
+}
 
 func clampNorm(v, lo, hi float64) float64 {
 	if v < lo {

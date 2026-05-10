@@ -48,6 +48,9 @@ type ScenarioConfig struct {
 	BreakthroughPostQiFrac     float64 // fraction of the new realm qi max retained after breakthrough
 	BreakthroughCD             int     // ticks of cooldown after failed breakthrough
 	JindanBreakFailDeathChance float64
+	// Sects
+	SectMembershipChance float64
+	SectAllyCombatAssist float64 // fraction of same-sect same-cell combat power counted in attack judgment
 	// Combat
 	CombatDeathChance    float64
 	CombatCostBase       float64 // fraction of opponent qi paid by winner in combat
@@ -81,6 +84,8 @@ func DefaultScenarioConfig() ScenarioConfig {
 		BreakthroughPostQiFrac:             0.25,
 		BreakthroughCD:                     100,
 		JindanBreakFailDeathChance:         0.30,
+		SectMembershipChance:               0.20,
+		SectAllyCombatAssist:               0.25,
 		CombatDeathChance:                  0.3,
 		CombatCostBase:                     0.20,
 		CombatSelfMinCost:                  0.02,

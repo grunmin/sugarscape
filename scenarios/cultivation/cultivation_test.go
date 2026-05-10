@@ -555,6 +555,70 @@ func TestResourceCompetitionRaisesAttackDesire(t *testing.T) {
 	}
 }
 
+func TestBreakthroughPressureRaisesResourceCompetition(t *testing.T) {
+	cfg := DefaultScenarioConfig()
+	low := engine.NewAttrBag()
+	low.Num["qi"] = 50
+	low.Num["qi_max"] = 100
+	near := engine.NewAttrBag()
+	near.Num["qi"] = 90
+	near.Num["qi_max"] = 100
+
+	lowPressure := breakthroughResourcePressure(low, cfg)
+	nearPressure := breakthroughResourcePressure(near, cfg)
+	if nearPressure <= lowPressure {
+		t.Fatalf("near-threshold pressure = %v, low pressure = %v, want higher pressure near breakthrough", nearPressure, lowPressure)
+	}
+
+	near.Num["qi"] = 95
+	if got := breakthroughResourcePressure(near, cfg); got != 0 {
+		t.Fatalf("breakthrough pressure at threshold = %v, want 0", got)
+	}
+}
+
+func TestSectDefaultsMatchStrategy(t *testing.T) {
+	cfg := DefaultScenarioConfig()
+	if cfg.SectMembershipChance != 0.20 {
+		t.Fatalf("sect membership chance = %v, want 0.20", cfg.SectMembershipChance)
+	}
+	if cfg.SectAllyCombatAssist != 0.25 {
+		t.Fatalf("sect ally combat assist = %v, want 0.25", cfg.SectAllyCombatAssist)
+	}
+	if len(sectNames) != 7 {
+		t.Fatalf("sect count = %d, want 7", len(sectNames))
+	}
+}
+
+func TestSameSectCellCombatPowerSupportsAttackJudgment(t *testing.T) {
+	cfg := DefaultScenarioConfig()
+	w := engine.NewWorld(engine.DefaultEngineConfig())
+
+	attacker := engine.NewAttrBag()
+	attacker.Num["combat_power"] = 100
+	attacker.Num["perceived_cp_mult"] = 1.2
+	attacker.Str["sect"] = "宗门1"
+	ally := engine.NewAttrBag()
+	ally.Num["combat_power"] = 80
+	ally.Str["sect"] = "宗门1"
+	otherSect := engine.NewAttrBag()
+	otherSect.Num["combat_power"] = 1000
+	otherSect.Str["sect"] = "宗门2"
+	distantAlly := engine.NewAttrBag()
+	distantAlly.Num["combat_power"] = 1000
+	distantAlly.Str["sect"] = "宗门1"
+
+	w.Next.Agents.Add("cultivator", 1, 1, attacker)
+	w.Next.Agents.Add("cultivator", 1, 1, ally)
+	w.Next.Agents.Add("cultivator", 1, 1, otherSect)
+	w.Next.Agents.Add("cultivator", 2, 1, distantAlly)
+
+	got := effectiveSelfCombatPower(w.Next.Agents, []int{0, 1, 2}, 0, cfg)
+	want := 100*1.2 + 80*cfg.SectAllyCombatAssist
+	if math.Abs(got-want) > 1e-12 {
+		t.Fatalf("effective self combat power = %v, want %v", got, want)
+	}
+}
+
 func TestSameRealmUsesLowerAttackThreshold(t *testing.T) {
 	a := engine.NewAttrBag()
 	a.Num["realm"] = 3
