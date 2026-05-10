@@ -28,7 +28,13 @@ type World struct {
 }
 
 func NewWorld(cfg EngineConfig) *World {
+	if cfg.NumWorkers > 0 {
+		NumWorkers = cfg.NumWorkers
+	}
 	store := NewAgentStore(20000)
+	// Initialize per-worker RNG pool from the base seed.
+	baseRNG := NewRNG(cfg.Seed)
+	SetRNGPool(NewRNGPool(baseRNG, NumWorkers))
 	env := NewGrid(cfg.GridWidth, cfg.GridHeight)
 
 	f := &Frame{Agents: store, Env: env}

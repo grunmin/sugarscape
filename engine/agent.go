@@ -12,15 +12,15 @@ type AttrBag struct {
 
 func NewAttrBag() AttrBag {
 	return AttrBag{
-		Num: make(map[string]float64),
-		Str: make(map[string]string),
+		Num: make(map[string]float64, 12),
+		Str: make(map[string]string, 4),
 	}
 }
 
 func (a AttrBag) Clone() AttrBag {
 	b := AttrBag{
-		Num: make(map[string]float64, len(a.Num)),
-		Str: make(map[string]string, len(a.Str)),
+		Num: make(map[string]float64, len(a.Num)+4),
+		Str: make(map[string]string, len(a.Str)+2),
 	}
 	for k, v := range a.Num {
 		b.Num[k] = v
@@ -113,7 +113,7 @@ func (as *AgentStore) CountKind(kind string) int {
 	return n
 }
 
-// Clone creates a deep copy.
+// Clone creates a deep copy. Parallelized for large agent counts.
 func (as *AgentStore) Clone() *AgentStore {
 	c := &AgentStore{
 		ID:      make([]int, len(as.ID)),
@@ -125,15 +125,19 @@ func (as *AgentStore) Clone() *AgentStore {
 		freeIDs: make([]int, len(as.freeIDs)),
 		nextID:  as.nextID,
 	}
-	copy(c.ID, as.ID)
-	copy(c.Kind, as.Kind)
-	copy(c.X, as.X)
-	copy(c.Y, as.Y)
-	copy(c.Alive, as.Alive)
+
+	n := len(as.ID)
+	ParaFor(n, func(start, end int) {
+		copy(c.ID[start:end], as.ID[start:end])
+		copy(c.Kind[start:end], as.Kind[start:end])
+		copy(c.X[start:end], as.X[start:end])
+		copy(c.Y[start:end], as.Y[start:end])
+		copy(c.Alive[start:end], as.Alive[start:end])
+		for i := start; i < end; i++ {
+			c.Attrs[i] = as.Attrs[i].Clone()
+		}
+	})
 	copy(c.freeIDs, as.freeIDs)
-	for i := range as.Attrs {
-		c.Attrs[i] = as.Attrs[i].Clone()
-	}
 	return c
 }
 

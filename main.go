@@ -13,25 +13,26 @@ func main() {
 	cfg := engine.DefaultEngineConfig()
 	scnCfg := cultivation.DefaultScenarioConfig()
 
+	initStart := time.Now()
 	world := engine.NewWorld(cfg)
 	cultivation.Setup(world)
+	initElapsed := time.Since(initStart)
 
 	fmt.Println("=== 修仙世界模拟器 ===")
-	fmt.Printf("世界: %d×%d  凡人/格: %.0f  初始妖兽: %d  种子: %d\n",
+	fmt.Printf("世界: %d×%d  凡人/格: %.0f  初始妖兽: %d  种子: %d  并行: %d 核\n",
 		cfg.GridWidth, cfg.GridHeight,
-		scnCfg.MortalBaseDensity, scnCfg.InitialBeasts, cfg.Seed)
-	fmt.Printf("部落数: %d  凡人→修仙转化率: %.3f (一生)\n",
-		scnCfg.NumTribes, scnCfg.MortalConvChance)
+		scnCfg.MortalBaseDensity, scnCfg.InitialBeasts, cfg.Seed, cfg.NumWorkers)
+	fmt.Printf("部落数: %d  凡人→修仙转化率: %.3f  初始化耗时: %v\n",
+		scnCfg.NumTribes, scnCfg.MortalConvChance, initElapsed.Round(time.Millisecond))
 	fmt.Println()
 
 	maxTicks := int64(1000)
 	snapshotEvery := 20
 	startTime := time.Now()
 
-	// Print stats header.
-	fmt.Printf("%-6s %-6s %-8s %-12s %-8s %-8s %-8s %-8s %-8s\n",
-		"tick", "year", "cultiv", "mortals", "练气", "筑基", "金丹", "元婴", "化神")
-	fmt.Println("------ ------ -------- ------------ -------- -------- -------- -------- --------")
+	fmt.Printf("%-6s %-6s %-8s %-12s %-8s %-8s %-8s %-8s %-8s %-10s\n",
+		"tick", "year", "cultiv", "mortals", "练气", "筑基", "金丹", "元婴", "化神", "elapsed")
+	fmt.Println("------ ------ -------- ------------ -------- -------- -------- -------- -------- ----------")
 
 	for tick := int64(0); tick < maxTicks; tick++ {
 		world.Tick()
@@ -41,13 +42,14 @@ func main() {
 		}
 
 		if world.Clock.Tick%100 == 0 {
-			printTickStats(world)
+			printTickStats(world, startTime)
 		}
 	}
 
 	elapsed := time.Since(startTime)
 	fmt.Println()
-	fmt.Printf("模拟完成，耗时 %s\n", elapsed)
+	fmt.Printf("模拟完成，耗时 %s (%.2f ms/tick)\n", elapsed.Round(time.Millisecond),
+		float64(elapsed.Milliseconds())/float64(maxTicks))
 
 	// Final snapshot.
 	world.Stats.Snapshot(world.Curr, world.Next.Env, world.Clock.Tick, world.Clock.Year())
@@ -67,7 +69,7 @@ func main() {
 	printFinalSummary(world)
 }
 
-func printTickStats(w *engine.World) {
+func printTickStats(w *engine.World, startTime time.Time) {
 	agents := w.Curr.Agents
 	realms := map[int]int{1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
 	total := 0
@@ -87,9 +89,10 @@ func printTickStats(w *engine.World) {
 		realms[r]++
 	}
 
-	fmt.Printf("%-6d %-6.0f %-8d %-12.0f %-8d %-8d %-8d %-8d %-8d\n",
+	elapsed := time.Since(startTime).Round(time.Second)
+	fmt.Printf("%-6d %-6.0f %-8d %-12.0f %-8d %-8d %-8d %-8d %-8d %-10s\n",
 		w.Clock.Tick, w.Clock.Year(), total, w.Next.Env.TotalMortals(),
-		realms[1], realms[2], realms[3], realms[4], realms[5])
+		realms[1], realms[2], realms[3], realms[4], realms[5], elapsed)
 }
 
 func printFinalSummary(w *engine.World) {

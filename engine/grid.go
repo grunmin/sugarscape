@@ -73,9 +73,13 @@ func (g *Grid) AddMortal(x, y int, delta float64) float64 {
 
 // Rebuild clears agent lists and re-indexes all living agents.
 func (g *Grid) Rebuild(store *AgentStore) {
-	for i := range g.Cells {
-		g.Cells[i].Agents = g.Cells[i].Agents[:0]
-	}
+	// Parallel clear.
+	ParaFor(len(g.Cells), func(start, end int) {
+		for i := start; i < end; i++ {
+			g.Cells[i].Agents = g.Cells[i].Agents[:0]
+		}
+	})
+	// Serial placement (O(agents), fast enough).
 	for i := range store.ID {
 		if !store.Alive[i] {
 			continue

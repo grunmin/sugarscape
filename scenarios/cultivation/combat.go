@@ -1,6 +1,10 @@
 package cultivation
 
-import "github.com/runmin/sugarscape/engine"
+import (
+	"math"
+
+	"github.com/runmin/sugarscape/engine"
+)
 
 // CombatSystem resolves pending fights.
 type CombatSystem struct{}
@@ -41,6 +45,17 @@ func (s *CombatSystem) Tick(w *engine.World) {
 			winner, loser = f.Attacker, f.Defender
 		} else {
 			winner, loser = f.Defender, f.Attacker
+		}
+
+		cpWin := agents.Attrs[winner].Num["combat_power"]
+		cpLose := agents.Attrs[loser].Num["combat_power"]
+
+		// Winner also pays a combat cost.
+		cpRatio := math.Min(cpWin, cpLose) / math.Max(cpWin, cpLose)
+		cost := agents.Attrs[winner].Num["qi"] * cfg.CombatCostBase * cpRatio
+		agents.Attrs[winner].Num["qi"] -= cost
+		if agents.Attrs[winner].Num["qi"] < 0 {
+			agents.Attrs[winner].Num["qi"] = 0
 		}
 
 		if w.RNG.Float64() < cfg.CombatDeathChance {
