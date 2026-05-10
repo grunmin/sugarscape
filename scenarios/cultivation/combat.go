@@ -51,12 +51,17 @@ func (s *CombatSystem) Tick(w *engine.World) {
 		cpLose := agents.Attrs[loser].Num["combat_power"]
 
 		// Winner also pays a combat cost.
-		cpRatio := math.Min(cpWin, cpLose) / math.Max(cpWin, cpLose)
+		maxCP := math.Max(cpWin, cpLose)
+		cpRatio := 0.0
+		if maxCP > 0 {
+			cpRatio = math.Min(cpWin, cpLose) / maxCP
+		}
 		cost := agents.Attrs[winner].Num["qi"] * cfg.CombatCostBase * cpRatio
 		agents.Attrs[winner].Num["qi"] -= cost
 		if agents.Attrs[winner].Num["qi"] < 0 {
 			agents.Attrs[winner].Num["qi"] = 0
 		}
+		updateCombatPower(&agents.Attrs[winner], cfg)
 
 		if w.RNG.Float64() < cfg.CombatDeathChance {
 			agents.Kill(loser)
@@ -68,10 +73,13 @@ func (s *CombatSystem) Tick(w *engine.World) {
 			if agents.Attrs[winner].Num["qi"] > qiMax {
 				agents.Attrs[winner].Num["qi"] = qiMax
 			}
+			updateCombatPower(&agents.Attrs[winner], cfg)
 		} else {
 			agents.Attrs[loser].Num["qi"] *= 0.5
-			agents.X[loser] = (agents.X[loser] + w.RNG.Intn(3) - 1 + w.Config.GridWidth) % w.Config.GridWidth
-			agents.Y[loser] = (agents.Y[loser] + w.RNG.Intn(3) - 1 + w.Config.GridHeight) % w.Config.GridHeight
+			agents.X[loser], agents.Y[loser] = randomAdjacentPosition(
+				w.RNG, agents.X[loser], agents.Y[loser], w.Config.GridWidth, w.Config.GridHeight,
+			)
+			updateCombatPower(&agents.Attrs[loser], cfg)
 		}
 	}
 }

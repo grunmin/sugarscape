@@ -19,7 +19,7 @@ func (f *Frame) Clone() *Frame {
 type World struct {
 	Curr    *Frame
 	Next    *Frame
-	Grid    *Grid   // spatial index, rebuilt each tick from Next agent positions
+	Grid    *Grid // spatial index, rebuilt each tick from Next agent positions
 	Clock   *Clock
 	RNG     *RNG
 	Config  EngineConfig
@@ -77,7 +77,7 @@ func (w *World) Run(ticks int64, snapshotEvery int) {
 	for range ticks {
 		w.Tick()
 		if snapshotEvery > 0 && w.Clock.Tick%int64(snapshotEvery) == 0 {
-			w.Stats.Snapshot(w.Curr, w.Next.Env, w.Clock.Tick, w.Clock.Year())
+			w.Stats.Snapshot(w.Curr, w.Curr.Env, w.Clock.Tick, w.Clock.Year())
 		}
 	}
 }

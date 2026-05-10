@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"sync"
 )
 
 // DataPoint holds aggregated stats at a point in time.
@@ -30,21 +31,41 @@ type DataPoint struct {
 }
 
 type StatsCollector struct {
-	Snapshots          []DataPoint
-	TickDeaths         int
-	TickBirths         int
-	TickBreakthru      int
-	TickMortalConv     int
+	mu             sync.Mutex
+	Snapshots      []DataPoint
+	TickDeaths     int
+	TickBirths     int
+	TickBreakthru  int
+	TickMortalConv int
 }
 
 func NewStatsCollector() *StatsCollector {
 	return &StatsCollector{}
 }
 
-func (sc *StatsCollector) RecordDeath()          { sc.TickDeaths++ }
-func (sc *StatsCollector) RecordBirth()           { sc.TickBirths++ }
-func (sc *StatsCollector) RecordBreakthrough()    { sc.TickBreakthru++ }
-func (sc *StatsCollector) RecordMortalConversion() { sc.TickMortalConv++ }
+func (sc *StatsCollector) RecordDeath() {
+	sc.mu.Lock()
+	sc.TickDeaths++
+	sc.mu.Unlock()
+}
+
+func (sc *StatsCollector) RecordBirth() {
+	sc.mu.Lock()
+	sc.TickBirths++
+	sc.mu.Unlock()
+}
+
+func (sc *StatsCollector) RecordBreakthrough() {
+	sc.mu.Lock()
+	sc.TickBreakthru++
+	sc.mu.Unlock()
+}
+
+func (sc *StatsCollector) RecordMortalConversion() {
+	sc.mu.Lock()
+	sc.TickMortalConv++
+	sc.mu.Unlock()
+}
 
 var realmNames = map[int]string{
 	0: "凡人",
@@ -57,16 +78,27 @@ var realmNames = map[int]string{
 
 // Snapshot captures the current world state and resets tick counters.
 func (sc *StatsCollector) Snapshot(f *Frame, env *Grid, tick int64, year float64) {
+	sc.mu.Lock()
+	deaths := sc.TickDeaths
+	births := sc.TickBirths
+	breakthroughs := sc.TickBreakthru
+	mortalConversions := sc.TickMortalConv
+	sc.TickDeaths = 0
+	sc.TickBirths = 0
+	sc.TickBreakthru = 0
+	sc.TickMortalConv = 0
+	sc.mu.Unlock()
+
 	dp := DataPoint{
 		Tick:              tick,
 		Year:              year,
 		KindCounts:        make(map[string]int),
 		RealmCounts:       make(map[string]int),
 		TotalMortals:      env.TotalMortals(),
-		Deaths:            sc.TickDeaths,
-		Births:            sc.TickBirths,
-		Breakthroughs:     sc.TickBreakthru,
-		MortalConversions: sc.TickMortalConv,
+		Deaths:            deaths,
+		Births:            births,
+		Breakthroughs:     breakthroughs,
+		MortalConversions: mortalConversions,
 	}
 
 	var qiSum, ageSum, cpSum, aggSum float64
@@ -99,10 +131,6 @@ func (sc *StatsCollector) Snapshot(f *Frame, env *Grid, tick int64, year float64
 	}
 
 	sc.Snapshots = append(sc.Snapshots, dp)
-	sc.TickDeaths = 0
-	sc.TickBirths = 0
-	sc.TickBreakthru = 0
-	sc.TickMortalConv = 0
 }
 
 // ExportCSV writes all snapshots to a CSV file.

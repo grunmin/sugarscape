@@ -26,7 +26,7 @@ func Setup(w *engine.World) {
 			idx := y*env.Width + x
 			env.Cells[idx].Env0 = spirit
 			env.Cells[idx].Env1 = spirit + 15
-			env.Cells[idx].Env2 = cfg.SpiritRegenRate + w.RNG.Float64()*0.3
+			env.Cells[idx].Env2 = cfg.SpiritRegenRate
 		}
 	}
 
@@ -39,7 +39,7 @@ func Setup(w *engine.World) {
 				nx := (sx + dx + w.Config.GridWidth) % w.Config.GridWidth
 				ny := (sy + dy + w.Config.GridHeight) % w.Config.GridHeight
 				dist := float64(dx*dx + dy*dy)
-				boost := 30 * exp(-dist/15)
+				boost := 30 * exp(-dist/30)
 				current := env.Env0(nx, ny)
 				newVal := current + boost
 				if newVal > current+40 {
@@ -49,14 +49,11 @@ func Setup(w *engine.World) {
 					newVal = cfg.SpiritMax
 				}
 				env.SetEnv0(nx, ny, newVal)
-				env.SetEnv1(nx, ny, newVal+10)
+				env.SetEnv1(nx, ny, newVal+25)
 				env.SetEnv2(nx, ny, cfg.SpiritRegenRate+0.5)
 			}
 		}
 	}
-
-	// Clone env to Next frame.
-	w.Next.Env = env.CloneEnv()
 
 	// --- Initialize mortal population (tribal distribution) ---
 	tribeCenters := make([][2]int, cfg.NumTribes)
@@ -75,6 +72,12 @@ func Setup(w *engine.World) {
 				dx := float64(x - tc[0])
 				dy := float64(y - tc[1])
 				// Toroidal distance.
+				if dx < 0 {
+					dx = -dx
+				}
+				if dy < 0 {
+					dy = -dy
+				}
 				if dx > float64(w.Config.GridWidth)/2 {
 					dx = float64(w.Config.GridWidth) - dx
 				}
@@ -105,6 +108,19 @@ func Setup(w *engine.World) {
 			env.SetMortal(x, y, mortalPop)
 		}
 	}
+
+	// Normalize to the configured average while preserving tribal shape.
+	targetMortals := float64(env.Width*env.Height) * cfg.MortalBaseDensity
+	currentMortals := env.TotalMortals()
+	if currentMortals > 0 {
+		scale := targetMortals / currentMortals
+		for i := range env.Cells {
+			env.Cells[i].MortalPop *= scale
+		}
+	}
+
+	// Clone complete environment to Next frame.
+	w.Next.Env = env.CloneEnv()
 
 	// Clone initial agents to Next frame (no cultivators initially, converted from mortals).
 	w.Next.Agents = w.Curr.Agents.Clone()

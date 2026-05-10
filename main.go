@@ -39,7 +39,7 @@ func main() {
 		world.Tick()
 
 		if world.Clock.Tick%int64(snapshotEvery) == 0 {
-			world.Stats.Snapshot(world.Curr, world.Next.Env, world.Clock.Tick, world.Clock.Year())
+			world.Stats.Snapshot(world.Curr, world.Curr.Env, world.Clock.Tick, world.Clock.Year())
 		}
 
 		if time.Since(lastPrint) >= 5*time.Second {
@@ -54,7 +54,10 @@ func main() {
 		float64(elapsed.Milliseconds())/float64(maxTicks))
 
 	// Final snapshot.
-	world.Stats.Snapshot(world.Curr, world.Next.Env, world.Clock.Tick, world.Clock.Year())
+	if len(world.Stats.Snapshots) == 0 ||
+		world.Stats.Snapshots[len(world.Stats.Snapshots)-1].Tick != world.Clock.Tick {
+		world.Stats.Snapshot(world.Curr, world.Curr.Env, world.Clock.Tick, world.Clock.Year())
+	}
 
 	// Export CSV.
 	outPath := "output/stats.csv"
@@ -93,7 +96,7 @@ func printTickStats(w *engine.World, startTime time.Time) {
 
 	elapsed := time.Since(startTime).Round(time.Second)
 	fmt.Printf("%-6d %-6.0f %-8d %-12.0f %-8d %-8d %-8d %-8d %-8d %-10s\n",
-		w.Clock.Tick, w.Clock.Year(), total, w.Next.Env.TotalMortals(),
+		w.Clock.Tick, w.Clock.Year(), total, w.Curr.Env.TotalMortals(),
 		realms[1], realms[2], realms[3], realms[4], realms[5], elapsed)
 }
 

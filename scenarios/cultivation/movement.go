@@ -50,19 +50,35 @@ func moveCultivator(rng *engine.RNG, agents *engine.AgentStore, env *engine.Grid
 				nx := (x + dx + gridW) % gridW
 				ny := (y + dy + gridH) % gridH
 				sp := env.Env0(nx, ny)
-				if sp > bestSpirit && rng.Float64() < 0.7 {
+				if sp > bestSpirit {
 					bestX, bestY = nx, ny
 					bestSpirit = sp
 				}
 			}
 		}
 
-		if rng.Float64() < 0.1 || (bestX == x && bestY == y) {
-			bestX = (x + rng.Intn(3) - 1 + gridW) % gridW
-			bestY = (y + rng.Intn(3) - 1 + gridH) % gridH
+		targetX, targetY := x, y
+		roll := rng.Float64()
+		if roll < 0.7 {
+			targetX, targetY = bestX, bestY
+		} else if roll < 0.8 {
+			targetX, targetY = randomAdjacentPosition(rng, x, y, gridW, gridH)
+		}
+		if targetX == x && targetY == y && bestX == x && bestY == y {
+			targetX, targetY = randomAdjacentPosition(rng, x, y, gridW, gridH)
 		}
 
-		agents.X[i] = bestX
-		agents.Y[i] = bestY
+		agents.X[i] = targetX
+		agents.Y[i] = targetY
+	}
+}
+
+func randomAdjacentPosition(rng *engine.RNG, x, y, gridW, gridH int) (int, int) {
+	for {
+		dx := rng.Intn(3) - 1
+		dy := rng.Intn(3) - 1
+		if dx != 0 || dy != 0 {
+			return (x + dx + gridW) % gridW, (y + dy + gridH) % gridH
+		}
 	}
 }

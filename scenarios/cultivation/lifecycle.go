@@ -25,10 +25,12 @@ func (s *LifecycleSystem) Tick(w *engine.World) {
 
 	var mu sync.Mutex
 	var allBirths []birthReq
+	var allDeaths []int
 
 	engine.ParaForRNG(len(agents.ID), func(start, end, workerIdx int) {
 		rng := engine.WorkerRNG(workerIdx)
 		var localBirths []birthReq
+		var localDeaths []int
 		for i := start; i < end; i++ {
 			if !agents.Alive[i] {
 				continue
@@ -48,13 +50,12 @@ func (s *LifecycleSystem) Tick(w *engine.World) {
 				lifespan := rc.Lifespan
 
 				if attrs.Num["age"] >= lifespan {
-					agents.Kill(i)
-					w.Stats.RecordDeath()
+					localDeaths = append(localDeaths, i)
 					continue
 				}
 
 				age := attrs.Num["age"]
-				if age >= cfg.BirthCooldown &&
+				if age > cfg.BirthCooldown &&
 					age < lifespan*0.7 &&
 					rng.Float64() < cfg.BaseBirthRate {
 
@@ -81,20 +82,28 @@ func (s *LifecycleSystem) Tick(w *engine.World) {
 						x: agents.X[i], y: agents.Y[i],
 						kind: "cultivator", attrs: childAttrs,
 					})
-					w.Stats.RecordBirth()
 				}
 
+			}
 		}
-		}
-		if len(localBirths) > 0 {
+		if len(localBirths) > 0 || len(localDeaths) > 0 {
 			mu.Lock()
 			allBirths = append(allBirths, localBirths...)
+			allDeaths = append(allDeaths, localDeaths...)
 			mu.Unlock()
 		}
 	})
 
+	for _, idx := range allDeaths {
+		if agents.Alive[idx] {
+			agents.Kill(idx)
+			w.Stats.RecordDeath()
+		}
+	}
+
 	for _, b := range allBirths {
 		agents.Add(b.kind, b.x, b.y, b.attrs)
+		w.Stats.RecordBirth()
 	}
 
 }

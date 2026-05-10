@@ -29,6 +29,9 @@ func (s *InteractionSystem) Tick(w *engine.World) {
 	agents := w.Next.Agents
 	var fights []PendingFight
 
+	// Movement runs before interactions, so refresh the spatial index here.
+	w.Grid.Rebuild(agents)
+
 	// Reuse or allocate seen map.
 	if s.seen == nil {
 		s.seen = make(map[int]bool, 65536)
@@ -98,7 +101,7 @@ func (s *InteractionSystem) resolveInteraction(w *engine.World, i, j int) Pendin
 			return PendingFight{Attacker: i, Defender: j}
 		}
 		if cpI > 0 && cpJ/cpI > cfg.FleeThreshold {
-			return PendingFight{}
+			return PendingFight{Attacker: j, Defender: i}
 		}
 
 		// Compute attack desire using cp_diff_norm with perceived_cp_mult and sqrt.

@@ -37,12 +37,7 @@ func (s *MortalSystem) Tick(w *engine.World) {
 			pop = pop - actualDeaths + actualBirths
 
 			expectedConvs := pop * convPerTick
-			convs := 0
-			for range int(expectedConvs) {
-				if rng.Float64() < convPerTick*float64(w.Config.TicksPerYear) {
-					convs++
-				}
-			}
+			convs := int(expectedConvs)
 			fracPart := expectedConvs - float64(int(expectedConvs))
 			if rng.Float64() < fracPart {
 				convs++
@@ -85,7 +80,7 @@ func spawnCultivator(w *engine.World, x, y int) {
 	attrs.Num["realm"] = 1
 	attrs.Num["qi"] = cfg.BaseQi * rc.QiMultiplier * (0.3 + rng.Float64()*0.5)
 	attrs.Num["qi_max"] = cfg.BaseQi * rc.QiMultiplier
-	attrs.Num["combat_power"] = cfg.BaseQi * rc.CombatMultiplier * (0.3 + rng.Float64()*0.5)
+	updateCombatPower(&attrs, cfg)
 	attrs.Num["age"] = 15 + rng.Float64()*15
 	attrs.Num["lifespan"] = rc.Lifespan
 	attrs.Num["cultivation_speed"] = 0.3 + rng.Float64()*0.7
