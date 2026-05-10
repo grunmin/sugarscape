@@ -1,6 +1,7 @@
 package cultivation
 
 import (
+	"fmt"
 	"math"
 
 	"github.com/runmin/sugarscape/engine"
@@ -67,8 +68,25 @@ func (s *CombatSystem) Tick(w *engine.World) {
 		if w.RNG.Float64() < cfg.CombatDeathChance {
 			loserX, loserY := agents.X[loser], agents.Y[loser]
 			loserQi := agents.Attrs[loser].Num["qi"]
+			loserRealm := int(agents.Attrs[loser].Num["realm"])
+			winnerRealm := int(agents.Attrs[winner].Num["realm"])
+			loserID := agents.ID[loser]
+			winnerID := agents.ID[winner]
 			agents.Kill(loser)
 			w.Stats.RecordDeath()
+			if loserRealm == 5 {
+				eventTick := w.Clock.Tick + 1
+				w.Stats.RecordNotableEvent(engine.NotableEvent{
+					Tick:    eventTick,
+					Year:    float64(eventTick) / float64(w.Config.TicksPerYear),
+					Kind:    "死亡",
+					Realm:   GetRealm(loserRealm).Name,
+					AgentID: loserID,
+					X:       loserX,
+					Y:       loserY,
+					Reason:  fmt.Sprintf("战斗死亡：被 #%d %s修士击杀", winnerID, GetRealm(winnerRealm).Name),
+				})
+			}
 
 			qiGain := loserQi * 0.3
 			qiMax := agents.Attrs[winner].Num["qi_max"]

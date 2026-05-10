@@ -83,6 +83,64 @@ func TestBreakthroughCooldownDoublesByRealm(t *testing.T) {
 	}
 }
 
+func TestBreakthroughToHuashenRecordsBirthReason(t *testing.T) {
+	oldBreakthrough := DefaultRealms[3].BreakthroughBase
+	DefaultRealms[3].BreakthroughBase = 1.0
+	defer func() { DefaultRealms[3].BreakthroughBase = oldBreakthrough }()
+
+	cfg := engine.DefaultEngineConfig()
+	cfg.GridWidth = 3
+	cfg.GridHeight = 3
+	cfg.NumWorkers = 1
+
+	w := engine.NewWorld(cfg)
+	attrs := engine.NewAttrBag()
+	attrs.Num["realm"] = 4
+	attrs.Num["qi"] = 6000
+	attrs.Num["qi_max"] = 6000
+	attrs.Num["lifespan"] = 1000
+	attrs.Num["cultivation_speed"] = 0
+	attrs.Num["breakthrough_cooldown"] = 0
+	w.Next.Agents.Add("cultivator", 1, 1, attrs)
+
+	(&CultivationSystem{}).Tick(w)
+
+	events := w.Stats.DrainNotableEvents()
+	if len(events) != 1 {
+		t.Fatalf("notable events = %d, want 1", len(events))
+	}
+	ev := events[0]
+	if ev.Kind != "诞生" || ev.Realm != "化神" || ev.Reason != "突破成功：元婴 -> 化神" {
+		t.Fatalf("event = %+v, want huashen birth breakthrough reason", ev)
+	}
+}
+
+func TestHuashenNaturalDeathRecordsReason(t *testing.T) {
+	cfg := engine.DefaultEngineConfig()
+	cfg.GridWidth = 3
+	cfg.GridHeight = 3
+	cfg.NumWorkers = 1
+
+	w := engine.NewWorld(cfg)
+	attrs := engine.NewAttrBag()
+	attrs.Num["realm"] = 5
+	attrs.Num["qi"] = 123
+	attrs.Num["age"] = 3000
+	attrs.Num["qi_max"] = 20000
+	w.Next.Agents.Add("cultivator", 1, 1, attrs)
+
+	(&LifecycleSystem{}).Tick(w)
+
+	events := w.Stats.DrainNotableEvents()
+	if len(events) != 1 {
+		t.Fatalf("notable events = %d, want 1", len(events))
+	}
+	ev := events[0]
+	if ev.Kind != "死亡" || ev.Realm != "化神" || ev.Reason != "寿元耗尽" {
+		t.Fatalf("event = %+v, want huashen natural death reason", ev)
+	}
+}
+
 func TestStrongerSecondCultivatorAttacksOnFleeThreshold(t *testing.T) {
 	cfg := engine.DefaultEngineConfig()
 	cfg.GridWidth = 3

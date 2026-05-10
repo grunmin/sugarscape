@@ -92,6 +92,7 @@ func main() {
 		os.Exit(1)
 	}
 	fmt.Printf("统计数据已导出到 %s (%d 条记录)\n", outPath, len(world.Stats.Snapshots))
+	printNotableEvents(world.Stats.DrainNotableEvents())
 
 	printFinalSummary(world)
 }
@@ -120,6 +121,17 @@ func printTickStats(w *engine.World, startTime time.Time) {
 	fmt.Printf("%-6d %-6.0f %-8d %-12.0f %-8d %-8d %-8d %-8d %-8d %-10s\n",
 		w.Clock.Tick, w.Clock.Year(), total, w.Curr.Env.TotalMortals(),
 		realms[1], realms[2], realms[3], realms[4], realms[5], elapsed)
+	printNotableEvents(w.Stats.DrainNotableEvents())
+}
+
+func printNotableEvents(events []engine.NotableEvent) {
+	for _, ev := range events {
+		if ev.Realm != "化神" {
+			continue
+		}
+		fmt.Printf("  化神%s: tick=%d year=%.1f id=%d pos=(%d,%d) reason=%s\n",
+			ev.Kind, ev.Tick, ev.Year, ev.AgentID, ev.X, ev.Y, ev.Reason)
+	}
 }
 
 func printFinalSummary(w *engine.World) {

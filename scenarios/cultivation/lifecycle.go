@@ -18,9 +18,12 @@ func (s *LifecycleSystem) Tick(w *engine.World) {
 	ticksPerYear := float64(w.Config.TicksPerYear)
 
 	type deathReq struct {
-		idx  int
-		x, y int
-		qi   float64
+		idx    int
+		x, y   int
+		qi     float64
+		realm  int
+		id     int
+		reason string
 	}
 
 	var mu sync.Mutex
@@ -56,11 +59,18 @@ func (s *LifecycleSystem) Tick(w *engine.World) {
 
 				lowSpiritDeath := attrs.Num["low_spirit_years"] > lifespan*0.1 && rng.Float64() < 0.3
 				if attrs.Num["age"] >= lifespan || lowSpiritDeath {
+					reason := "寿元耗尽"
+					if attrs.Num["age"] < lifespan && lowSpiritDeath {
+						reason = "低灵气滞留超过寿元 1/10 后触发死亡"
+					}
 					localDeaths = append(localDeaths, deathReq{
-						idx: i,
-						x:   x,
-						y:   y,
-						qi:  attrs.Num["qi"],
+						idx:    i,
+						x:      x,
+						y:      y,
+						qi:     attrs.Num["qi"],
+						realm:  realm,
+						id:     agents.ID[i],
+						reason: reason,
 					})
 					continue
 				}
@@ -78,6 +88,19 @@ func (s *LifecycleSystem) Tick(w *engine.World) {
 			addSpirit(w.Next.Env, d.x, d.y, d.qi)
 			agents.Kill(d.idx)
 			w.Stats.RecordDeath()
+			if d.realm == 5 {
+				eventTick := w.Clock.Tick + 1
+				w.Stats.RecordNotableEvent(engine.NotableEvent{
+					Tick:    eventTick,
+					Year:    float64(eventTick) / float64(w.Config.TicksPerYear),
+					Kind:    "死亡",
+					Realm:   GetRealm(d.realm).Name,
+					AgentID: d.id,
+					X:       d.x,
+					Y:       d.y,
+					Reason:  d.reason,
+				})
+			}
 		}
 	}
 }

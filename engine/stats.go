@@ -30,6 +30,16 @@ type DataPoint struct {
 	MortalConversions int
 }
 
+type NotableEvent struct {
+	Tick    int64
+	Year    float64
+	Kind    string
+	Realm   string
+	AgentID int
+	X, Y    int
+	Reason  string
+}
+
 type StatsCollector struct {
 	mu             sync.Mutex
 	Snapshots      []DataPoint
@@ -37,6 +47,7 @@ type StatsCollector struct {
 	TickBirths     int
 	TickBreakthru  int
 	TickMortalConv int
+	NotableEvents  []NotableEvent
 }
 
 func NewStatsCollector() *StatsCollector {
@@ -65,6 +76,23 @@ func (sc *StatsCollector) RecordMortalConversion() {
 	sc.mu.Lock()
 	sc.TickMortalConv++
 	sc.mu.Unlock()
+}
+
+func (sc *StatsCollector) RecordNotableEvent(ev NotableEvent) {
+	sc.mu.Lock()
+	sc.NotableEvents = append(sc.NotableEvents, ev)
+	sc.mu.Unlock()
+}
+
+func (sc *StatsCollector) DrainNotableEvents() []NotableEvent {
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
+	if len(sc.NotableEvents) == 0 {
+		return nil
+	}
+	events := append([]NotableEvent(nil), sc.NotableEvents...)
+	sc.NotableEvents = sc.NotableEvents[:0]
+	return events
 }
 
 var realmNames = map[int]string{
