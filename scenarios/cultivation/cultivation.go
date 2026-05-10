@@ -76,9 +76,15 @@ func (s *CultivationSystem) Tick(w *engine.World) {
 				attrs.Num["qi"] = qiMax
 			}
 
+			if attrs.Num["qi"] >= qiMax*cfg.BreakthroughQiFrac {
+				attrs.Num["breakthrough_sustain_ticks"]++
+			} else {
+				attrs.Num["breakthrough_sustain_ticks"] = 0
+			}
+
 			if rc.BreakthroughBase > 0 &&
 				attrs.Num["breakthrough_cooldown"] <= 0 &&
-				attrs.Num["qi"] >= qiMax*cfg.BreakthroughQiFrac {
+				attrs.Num["breakthrough_sustain_ticks"] >= float64(breakthroughSustainTicks(cfg, realm)) {
 
 				if rng.Float64() < rc.BreakthroughBase {
 					newRealm := realm + 1
@@ -86,9 +92,10 @@ func (s *CultivationSystem) Tick(w *engine.World) {
 					newQiMax := cfg.BaseQi * newRC.QiMultiplier
 					attrs.Num["realm"] = float64(newRealm)
 					attrs.Num["qi_max"] = newQiMax
-					attrs.Num["qi"] = newQiMax * 0.5
+					attrs.Num["qi"] = newQiMax * cfg.BreakthroughPostQiFrac
 					attrs.Num["lifespan"] = randomLifespan(rng, newRC)
 					attrs.Num["breakthrough_cooldown"] = 0
+					attrs.Num["breakthrough_sustain_ticks"] = 0
 					w.Stats.RecordBreakthrough()
 					if newRealm >= 4 {
 						eventTick := w.Clock.Tick + 1
@@ -159,6 +166,20 @@ func breakthroughCooldownTicks(cfg ScenarioConfig, realm int) int {
 		realm = 1
 	}
 	return cfg.BreakthroughCD << (realm - 1)
+}
+
+func breakthroughSustainTicks(cfg ScenarioConfig, realm int) int {
+	if realm < 1 {
+		realm = 1
+	}
+	idx := realm - 1
+	if idx < len(cfg.BreakthroughSustainTicks) {
+		return cfg.BreakthroughSustainTicks[idx]
+	}
+	if len(cfg.BreakthroughSustainTicks) == 0 {
+		return 1
+	}
+	return cfg.BreakthroughSustainTicks[len(cfg.BreakthroughSustainTicks)-1]
 }
 
 func updateCombatPower(attrs *engine.AttrBag, cfg ScenarioConfig) {

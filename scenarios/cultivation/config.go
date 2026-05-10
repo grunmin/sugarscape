@@ -44,7 +44,9 @@ type ScenarioConfig struct {
 	CultivationSpeed           float64
 	CultivatorUpkeepQiFrac     float64 // fraction of realm qi max consumed per tick while alive
 	BreakthroughQiFrac         float64
-	BreakthroughCD             int // ticks of cooldown after failed breakthrough
+	BreakthroughSustainTicks   []int
+	BreakthroughPostQiFrac     float64 // fraction of the new realm qi max retained after breakthrough
+	BreakthroughCD             int     // ticks of cooldown after failed breakthrough
 	JindanBreakFailDeathChance float64
 	// Combat
 	CombatDeathChance    float64
@@ -74,7 +76,9 @@ func DefaultScenarioConfig() ScenarioConfig {
 		BaseQi:                             100,
 		CultivationSpeed:                   0.5,
 		CultivatorUpkeepQiFrac:             0.0001,
-		BreakthroughQiFrac:                 0.9,
+		BreakthroughQiFrac:                 0.99,
+		BreakthroughSustainTicks:           []int{10, 100, 500, 1000},
+		BreakthroughPostQiFrac:             0.25,
 		BreakthroughCD:                     100,
 		JindanBreakFailDeathChance:         0.30,
 		CombatDeathChance:                  0.3,

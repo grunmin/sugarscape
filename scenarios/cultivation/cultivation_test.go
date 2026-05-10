@@ -45,6 +45,7 @@ func TestBreakthroughUsesNewRealmQiMax(t *testing.T) {
 	attrs.Num["lifespan"] = 120
 	attrs.Num["cultivation_speed"] = 0
 	attrs.Num["breakthrough_cooldown"] = 0
+	attrs.Num["breakthrough_sustain_ticks"] = 9
 	w.Next.Agents.Add("cultivator", 1, 1, attrs)
 
 	(&CultivationSystem{}).Tick(w)
@@ -56,11 +57,11 @@ func TestBreakthroughUsesNewRealmQiMax(t *testing.T) {
 	if got["qi_max"] != 600 {
 		t.Fatalf("qi_max = %v, want 600", got["qi_max"])
 	}
-	if got["qi"] != 300 {
-		t.Fatalf("qi = %v, want 300", got["qi"])
+	if got["qi"] != 150 {
+		t.Fatalf("qi = %v, want 150", got["qi"])
 	}
-	if got["combat_power"] != 450 {
-		t.Fatalf("combat_power = %v, want 450", got["combat_power"])
+	if got["combat_power"] != 375 {
+		t.Fatalf("combat_power = %v, want 375", got["combat_power"])
 	}
 	if got["lifespan"] < 150 || got["lifespan"] > 250 {
 		t.Fatalf("lifespan = %v, want in [150, 250]", got["lifespan"])
@@ -98,11 +99,67 @@ func TestBreakthroughCooldownDoublesByRealm(t *testing.T) {
 	}
 }
 
+func TestBreakthroughRequiresSustainedHighQi(t *testing.T) {
+	oldBreakthrough := DefaultRealms[0].BreakthroughBase
+	DefaultRealms[0].BreakthroughBase = 1.0
+	defer func() { DefaultRealms[0].BreakthroughBase = oldBreakthrough }()
+
+	cfg := engine.DefaultEngineConfig()
+	cfg.GridWidth = 3
+	cfg.GridHeight = 3
+	cfg.NumWorkers = 1
+
+	w := engine.NewWorld(cfg)
+	attrs := engine.NewAttrBag()
+	attrs.Num["realm"] = 1
+	attrs.Num["qi"] = 200
+	attrs.Num["qi_max"] = 200
+	attrs.Num["lifespan"] = 120
+	attrs.Num["cultivation_speed"] = 0
+	attrs.Num["breakthrough_cooldown"] = 0
+	w.Next.Agents.Add("cultivator", 1, 1, attrs)
+
+	(&CultivationSystem{}).Tick(w)
+
+	got := w.Next.Agents.Attrs[0].Num
+	if got["realm"] != 1 {
+		t.Fatalf("realm = %v, want 1 before sustain requirement is met", got["realm"])
+	}
+	if got["breakthrough_sustain_ticks"] != 1 {
+		t.Fatalf("breakthrough_sustain_ticks = %v, want 1", got["breakthrough_sustain_ticks"])
+	}
+
+	got["qi"] = 197
+	(&CultivationSystem{}).Tick(w)
+	if got["breakthrough_sustain_ticks"] != 0 {
+		t.Fatalf("breakthrough_sustain_ticks = %v, want reset to 0 below threshold", got["breakthrough_sustain_ticks"])
+	}
+}
+
 func TestDefaultRealmBreakthroughProbabilitiesMatchStrategy(t *testing.T) {
 	want := []float64{0.10, 0.05, 0.03, 0.02, 0}
 	for i, prob := range want {
 		if got := DefaultRealms[i].BreakthroughBase; got != prob {
 			t.Fatalf("realm %d breakthrough probability = %v, want %v", i+1, got, prob)
+		}
+	}
+}
+
+func TestDefaultBreakthroughThresholdsMatchStrategy(t *testing.T) {
+	cfg := DefaultScenarioConfig()
+	if cfg.BreakthroughQiFrac != 0.99 {
+		t.Fatalf("breakthrough qi fraction = %v, want 0.99", cfg.BreakthroughQiFrac)
+	}
+	if cfg.BreakthroughPostQiFrac != 0.25 {
+		t.Fatalf("breakthrough post qi fraction = %v, want 0.25", cfg.BreakthroughPostQiFrac)
+	}
+	want := []int{10, 100, 500, 1000}
+	if len(cfg.BreakthroughSustainTicks) != len(want) {
+		t.Fatalf("breakthrough sustain ticks = %v, want %v", cfg.BreakthroughSustainTicks, want)
+	}
+	for i, tick := range want {
+		if got := cfg.BreakthroughSustainTicks[i]; got != tick {
+			t.Fatalf("realm %d breakthrough sustain ticks = %d, want %d", i+1, got, tick)
 		}
 	}
 }
@@ -125,6 +182,7 @@ func TestBreakthroughToHuashenRecordsBirthReason(t *testing.T) {
 	attrs.Num["lifespan"] = 1000
 	attrs.Num["cultivation_speed"] = 0
 	attrs.Num["breakthrough_cooldown"] = 0
+	attrs.Num["breakthrough_sustain_ticks"] = 999
 	w.Next.Agents.Add("cultivator", 1, 1, attrs)
 
 	(&CultivationSystem{}).Tick(w)
@@ -157,6 +215,7 @@ func TestBreakthroughToYuanyingRecordsBirthReason(t *testing.T) {
 	attrs.Num["lifespan"] = 500
 	attrs.Num["cultivation_speed"] = 0
 	attrs.Num["breakthrough_cooldown"] = 0
+	attrs.Num["breakthrough_sustain_ticks"] = 499
 	w.Next.Agents.Add("cultivator", 1, 1, attrs)
 
 	(&CultivationSystem{}).Tick(w)
@@ -191,6 +250,7 @@ func TestJindanBreakthroughFailureCanKill(t *testing.T) {
 		attrs.Num["lifespan"] = 500
 		attrs.Num["cultivation_speed"] = 0
 		attrs.Num["breakthrough_cooldown"] = 0
+		attrs.Num["breakthrough_sustain_ticks"] = 499
 		w.Next.Agents.Add("cultivator", 1, 1, attrs)
 
 		(&CultivationSystem{}).Tick(w)
