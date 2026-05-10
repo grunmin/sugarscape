@@ -45,7 +45,7 @@ func TestBreakthroughUsesNewRealmQiMax(t *testing.T) {
 	attrs.Num["lifespan"] = 120
 	attrs.Num["cultivation_speed"] = 0
 	attrs.Num["breakthrough_cooldown"] = 0
-	attrs.Num["breakthrough_sustain_ticks"] = 9
+	attrs.Num["breakthrough_sustain_ticks"] = 49
 	w.Next.Agents.Add("cultivator", 1, 1, attrs)
 
 	(&CultivationSystem{}).Tick(w)
@@ -129,7 +129,7 @@ func TestBreakthroughRequiresSustainedHighQi(t *testing.T) {
 		t.Fatalf("breakthrough_sustain_ticks = %v, want 1", got["breakthrough_sustain_ticks"])
 	}
 
-	got["qi"] = 197
+	got["qi"] = 189
 	(&CultivationSystem{}).Tick(w)
 	if got["breakthrough_sustain_ticks"] != 0 {
 		t.Fatalf("breakthrough_sustain_ticks = %v, want reset to 0 below threshold", got["breakthrough_sustain_ticks"])
@@ -147,13 +147,13 @@ func TestDefaultRealmBreakthroughProbabilitiesMatchStrategy(t *testing.T) {
 
 func TestDefaultBreakthroughThresholdsMatchStrategy(t *testing.T) {
 	cfg := DefaultScenarioConfig()
-	if cfg.BreakthroughQiFrac != 0.99 {
-		t.Fatalf("breakthrough qi fraction = %v, want 0.99", cfg.BreakthroughQiFrac)
+	if cfg.BreakthroughQiFrac != 0.95 {
+		t.Fatalf("breakthrough qi fraction = %v, want 0.95", cfg.BreakthroughQiFrac)
 	}
 	if cfg.BreakthroughPostQiFrac != 0.25 {
 		t.Fatalf("breakthrough post qi fraction = %v, want 0.25", cfg.BreakthroughPostQiFrac)
 	}
-	want := []int{10, 100, 500, 1000}
+	want := []int{50, 200, 500, 1000}
 	if len(cfg.BreakthroughSustainTicks) != len(want) {
 		t.Fatalf("breakthrough sustain ticks = %v, want %v", cfg.BreakthroughSustainTicks, want)
 	}

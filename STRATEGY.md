@@ -119,13 +119,13 @@
 
 ### 3.3 突破
 - 条件：
-  - 当前灵气 >= 灵气上限 × [BreakthroughQiFrac=0.99]（即灵气达到 99% 以上）
-  - 达到 99% 以上后必须连续维持一段时间，当前各境界晋升所需维持 tick 为：
-    - 练气 -> 筑基：[BreakthroughSustainTicks=10]
-    - 筑基 -> 金丹：[BreakthroughSustainTicks=100]
+  - 当前灵气 >= 灵气上限 × [BreakthroughQiFrac=0.95]（即灵气达到 95% 以上）
+  - 达到 95% 以上后必须连续维持一段时间，当前各境界晋升所需维持 tick 为：
+    - 练气 -> 筑基：[BreakthroughSustainTicks=50]
+    - 筑基 -> 金丹：[BreakthroughSustainTicks=200]
     - 金丹 -> 元婴：[BreakthroughSustainTicks=500]
     - 元婴 -> 化神：[BreakthroughSustainTicks=1000]
-  - 若灵气跌破 99%，连续维持计数清零
+  - 若灵气跌破 95%，连续维持计数清零
   - 当前境界有突破可能（突破基础概率 > 0）
   - 不在突破冷却中（见下）
 - 每 tick 检定一次：随机数 < 突破基础概率 则突破成功
