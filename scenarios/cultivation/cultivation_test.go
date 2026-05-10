@@ -303,9 +303,21 @@ func TestAttackDesireScalesWithQi(t *testing.T) {
 	defender.Num["combat_power"] = 25
 
 	got := attackDesire(attacker, defender)
-	want := 0.5 * math.Sqrt(0.75)
+	want := 0.5 * math.Sqrt(0.75) * 0.895
 	if math.Abs(got-want) > 1e-12 {
 		t.Fatalf("attack desire = %v, want %v", got, want)
+	}
+}
+
+func TestExpectedCombatLossFactorPenalizesRiskyFights(t *testing.T) {
+	cfg := DefaultScenarioConfig()
+
+	favorable := expectedCombatLossFactor(100, 25, cfg)
+	even := expectedCombatLossFactor(100, 100, cfg)
+	unfavorable := expectedCombatLossFactor(25, 100, cfg)
+
+	if !(favorable > even && even > unfavorable) {
+		t.Fatalf("loss factors favorable=%v even=%v unfavorable=%v, want descending by risk", favorable, even, unfavorable)
 	}
 }
 

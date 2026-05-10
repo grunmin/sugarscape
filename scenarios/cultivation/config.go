@@ -65,7 +65,7 @@ func DefaultScenarioConfig() ScenarioConfig {
 		BreakthroughQiFrac:   0.9,
 		BreakthroughCD:       20,
 		CombatDeathChance:    0.3,
-		CombatCostBase:       0.05,
+		CombatCostBase:       0.025,
 		FleeThreshold:        3.0,
 	}
 }

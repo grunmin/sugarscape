@@ -127,6 +127,7 @@ func main() {
 func printTickStats(w *engine.World, startTime time.Time, pausedDuration time.Duration) {
 	agents := w.Curr.Agents
 	realms := map[int]int{1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
+	qiStats := highRealmQiStats{}
 	total := 0
 
 	for i := range agents.ID {
@@ -142,13 +143,54 @@ func printTickStats(w *engine.World, startTime time.Time, pausedDuration time.Du
 			r = 5
 		}
 		realms[r]++
+		if r >= 3 {
+			qiStats.add(r, agents.Attrs[i].Num["qi"])
+		}
 	}
 
 	elapsed := (time.Since(startTime) - pausedDuration).Round(time.Second)
 	fmt.Printf("%-6d %-6.0f %-8d %-12.0f %-8d %-8d %-8d %-8d %-8d %-10s\n",
 		w.Clock.Tick, w.Clock.Year(), total, w.Curr.Env.TotalMortals(),
 		realms[1], realms[2], realms[3], realms[4], realms[5], elapsed)
+	printHighRealmQiStats(qiStats)
 	printNotableEvents(w.Stats.DrainNotableEvents())
+}
+
+type realmQiStat struct {
+	count int
+	sum   float64
+	max   float64
+}
+
+type highRealmQiStats [6]realmQiStat
+
+func (s *highRealmQiStats) add(realm int, qi float64) {
+	if realm < 3 || realm > 5 {
+		return
+	}
+	stat := &s[realm]
+	stat.count++
+	stat.sum += qi
+	if stat.count == 1 || qi > stat.max {
+		stat.max = qi
+	}
+}
+
+func printHighRealmQiStats(stats highRealmQiStats) {
+	names := map[int]string{3: "金丹", 4: "元婴", 5: "化神"}
+	fmt.Print("  高阶灵气 ")
+	for realm := 3; realm <= 5; realm++ {
+		stat := stats[realm]
+		avg := 0.0
+		if stat.count > 0 {
+			avg = stat.sum / float64(stat.count)
+		}
+		if realm > 3 {
+			fmt.Print(" | ")
+		}
+		fmt.Printf("%s: n=%d avg=%.1f max=%.1f", names[realm], stat.count, avg, stat.max)
+	}
+	fmt.Println()
 }
 
 func autoPause(w *engine.World, interrupts <-chan os.Signal) (quit bool, interrupted bool, pausedFor time.Duration) {
