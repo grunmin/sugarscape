@@ -1,13 +1,11 @@
 package cultivation
 
-import (
-	"sync"
-
-	"github.com/runmin/sugarscape/engine"
-)
+import "github.com/runmin/sugarscape/engine"
 
 // MortalSystem handles mortal population dynamics and conversion to cultivators.
-type MortalSystem struct{}
+type MortalSystem struct {
+	maxMortalPop float64
+}
 
 func (s *MortalSystem) Name() string  { return "MortalSystem" }
 func (s *MortalSystem) Priority() int { return 0 }
@@ -17,58 +15,76 @@ func (s *MortalSystem) Tick(w *engine.World) {
 	env := w.Next.Env
 	ratePerTick := 1.0 / (cfg.MortalLifespan * float64(w.Config.TicksPerYear))
 	convPerTick := cfg.MortalConvChance / (cfg.MortalLifespan * float64(w.Config.TicksPerYear))
+	rng := w.RNG
 
-	var mu sync.Mutex
-	var spawnReqs []spawnReq
+	pop := env.TotalMortals()
+	if pop <= 0 {
+		return
+	}
+	if s.maxMortalPop <= 0 {
+		s.maxMortalPop = maxMortalPop(env)
+	}
 
-	engine.ParaForRNG(len(env.Cells), func(start, end, workerIdx int) {
-		rng := engine.WorkerRNG(workerIdx)
-		var localSpawns []spawnReq
-		for i := start; i < end; i++ {
-			pop := env.Cells[i].MortalPop
-			if pop <= 0 {
-				continue
-			}
+	expectedDeaths := pop * ratePerTick
+	actualDeaths := expectedDeaths * (0.8 + rng.Float64()*0.4)
+	birthMult := cfg.MortalBirthRateMin + rng.Float64()*(cfg.MortalBirthRateMax-cfg.MortalBirthRateMin)
+	actualBirths := pop * ratePerTick * birthMult
+	env.AddMortalTotal(actualBirths - actualDeaths)
 
-			expectedDeaths := pop * ratePerTick
-			actualDeaths := expectedDeaths * (0.8 + rng.Float64()*0.4)
-			birthMult := cfg.MortalBirthRateMin + rng.Float64()*(cfg.MortalBirthRateMax-cfg.MortalBirthRateMin)
-			actualBirths := pop * ratePerTick * birthMult
-			pop = pop - actualDeaths + actualBirths
+	expectedConvs := env.TotalMortals() * convPerTick
+	convs := int(expectedConvs)
+	fracPart := expectedConvs - float64(convs)
+	if rng.Float64() < fracPart {
+		convs++
+	}
+	if convs > int(env.TotalMortals()) {
+		convs = int(env.TotalMortals())
+	}
 
-			expectedConvs := pop * convPerTick
-			convs := int(expectedConvs)
-			fracPart := expectedConvs - float64(int(expectedConvs))
-			if rng.Float64() < fracPart {
-				convs++
-			}
-
-			pop -= float64(convs)
-			if pop < 0 {
-				pop = 0
-			}
-			env.Cells[i].MortalPop = pop
-
-			for range convs {
-				y := i / w.Config.GridWidth
-				x := i % w.Config.GridWidth
-				localSpawns = append(localSpawns, spawnReq{x: x, y: y})
-			}
+	for range convs {
+		sr := sampleMortalSpawn(rng, env, s.maxMortalPop)
+		if env.Mortal(sr.x, sr.y) <= 0 {
+			continue
 		}
-		if len(localSpawns) > 0 {
-			mu.Lock()
-			spawnReqs = append(spawnReqs, localSpawns...)
-			mu.Unlock()
+		if env.AddMortal(sr.x, sr.y, -1) <= 0 {
+			env.SetMortal(sr.x, sr.y, 0)
 		}
-	})
-
-	for _, sr := range spawnReqs {
 		spawnCultivator(w, sr.x, sr.y)
 		w.Stats.RecordMortalConversion()
 	}
 }
 
 type spawnReq struct{ x, y int }
+
+func maxMortalPop(env *engine.Grid) float64 {
+	maxPop := 0.0
+	for i := range env.Cells {
+		if env.Cells[i].MortalPop > maxPop {
+			maxPop = env.Cells[i].MortalPop
+		}
+	}
+	if maxPop <= 0 {
+		return 1
+	}
+	return maxPop
+}
+
+func sampleMortalSpawn(rng *engine.RNG, env *engine.Grid, maxPop float64) spawnReq {
+	if maxPop <= 0 {
+		maxPop = 1
+	}
+	for tries := 0; tries < 10000; tries++ {
+		idx := rng.Intn(len(env.Cells))
+		if env.Cells[idx].MortalPop <= 0 {
+			continue
+		}
+		if rng.Float64()*maxPop <= env.Cells[idx].MortalPop {
+			return spawnReq{x: idx % env.Width, y: idx / env.Width}
+		}
+	}
+	idx := rng.Intn(len(env.Cells))
+	return spawnReq{x: idx % env.Width, y: idx / env.Width}
+}
 
 // spawnCultivator creates a new 练气 cultivator. Called serially, uses w.RNG.
 func spawnCultivator(w *engine.World, x, y int) {

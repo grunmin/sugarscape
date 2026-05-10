@@ -31,10 +31,11 @@ type ScenarioConfig struct {
 	MortalBirthRateMin float64 // multiplier on base mortality rate
 	MortalBirthRateMax float64 // multiplier on base mortality rate
 	// Spirit density
-	BaseSpiritDensity float64
-	SpiritRegenRate   float64
-	SpiritMax         float64
-	NumSpiritSprings  int
+	BaseSpiritDensity    float64
+	SpiritRegenRate      float64
+	SpiritMax            float64
+	NumSpiritSprings     int
+	EnvironmentTickEvery int
 	// Cultivation
 	BaseQi             float64
 	CultivationSpeed   float64
@@ -48,23 +49,24 @@ type ScenarioConfig struct {
 
 func DefaultScenarioConfig() ScenarioConfig {
 	return ScenarioConfig{
-		MortalBaseDensity:  100,
-		NumTribes:          200,
-		MortalLifespan:     70,
-		MortalConvChance:   0.001,
-		MortalBirthRateMin: 0.9,
-		MortalBirthRateMax: 1.2,
-		BaseSpiritDensity:  30,
-		SpiritRegenRate:    0.05,
-		SpiritMax:          100,
-		NumSpiritSprings:   20,
-		BaseQi:             100,
-		CultivationSpeed:   0.5,
-		BreakthroughQiFrac: 0.9,
-		BreakthroughCD:     20,
-		CombatDeathChance:  0.3,
-		CombatCostBase:     0.05,
-		FleeThreshold:      3.0,
+		MortalBaseDensity:    100,
+		NumTribes:            200,
+		MortalLifespan:       70,
+		MortalConvChance:     0.001,
+		MortalBirthRateMin:   0.9,
+		MortalBirthRateMax:   1.2,
+		BaseSpiritDensity:    30,
+		SpiritRegenRate:      0.05,
+		SpiritMax:            100,
+		NumSpiritSprings:     20,
+		EnvironmentTickEvery: 5,
+		BaseQi:               100,
+		CultivationSpeed:     0.5,
+		BreakthroughQiFrac:   0.9,
+		BreakthroughCD:       20,
+		CombatDeathChance:    0.3,
+		CombatCostBase:       0.05,
+		FleeThreshold:        3.0,
 	}
 }
 

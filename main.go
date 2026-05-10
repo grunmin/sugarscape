@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"sort"
@@ -159,8 +160,14 @@ func autoPause(w *engine.World, interrupts <-chan os.Signal) (quit bool, interru
 		return false, true, time.Since(start)
 	}
 	if err != nil {
-		fmt.Printf("读取按键失败: %v。继续模拟。\n", err)
-		return false, false, time.Since(start)
+		fmt.Printf("读取按键失败: %v。保持暂停；按 Ctrl+C 退出。\n", err)
+		for {
+			select {
+			case <-interrupts:
+				return false, true, time.Since(start)
+			case <-time.After(time.Second):
+			}
+		}
 	}
 	if key == 'q' || key == 'Q' {
 		return true, false, time.Since(start)
@@ -170,8 +177,14 @@ func autoPause(w *engine.World, interrupts <-chan os.Signal) (quit bool, interru
 }
 
 func readPauseKey(interrupts <-chan os.Signal) (byte, bool, error) {
-	fd := int(os.Stdin.Fd())
-	if isTerminal(os.Stdin) {
+	input, cleanup, err := pauseInput()
+	if err != nil {
+		return 0, false, err
+	}
+	defer cleanup()
+
+	fd := int(input.Fd())
+	if isTerminal(input) {
 		restore, err := enableRawInput(fd, false)
 		if err != nil {
 			return 0, false, err
@@ -185,9 +198,13 @@ func readPauseKey(interrupts <-chan os.Signal) (byte, bool, error) {
 				return 0, true, nil
 			default:
 			}
-			n, err := os.Stdin.Read(buf)
+			n, err := input.Read(buf)
 			if err != nil {
 				if err == syscall.EINTR || err == syscall.EAGAIN {
+					continue
+				}
+				if err == io.EOF {
+					time.Sleep(100 * time.Millisecond)
 					continue
 				}
 				return 0, false, err
@@ -202,7 +219,7 @@ func readPauseKey(interrupts <-chan os.Signal) (byte, bool, error) {
 	errCh := make(chan error, 1)
 	go func() {
 		buf := []byte{0}
-		if _, err := os.Stdin.Read(buf); err != nil {
+		if _, err := input.Read(buf); err != nil {
 			errCh <- err
 			return
 		}
@@ -216,6 +233,17 @@ func readPauseKey(interrupts <-chan os.Signal) (byte, bool, error) {
 	case key := <-keyCh:
 		return key, false, nil
 	}
+}
+
+func pauseInput() (*os.File, func(), error) {
+	if isTerminal(os.Stdin) {
+		return os.Stdin, func() {}, nil
+	}
+	tty, err := os.OpenFile("/dev/tty", os.O_RDONLY, 0)
+	if err != nil {
+		return nil, func() {}, err
+	}
+	return tty, func() { _ = tty.Close() }, nil
 }
 
 func isTerminal(f *os.File) bool {

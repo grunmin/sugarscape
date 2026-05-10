@@ -368,7 +368,7 @@ func TestEnvironmentRegenStillClampsBelowMax(t *testing.T) {
 
 	(&EnvironmentSystem{}).Tick(w)
 
-	if got := w.Next.Env.Env0(0, 0); got != 100 {
+	if got := w.Next.Env.Env0(0, 0); math.Abs(got-100) > 1e-9 {
 		t.Fatalf("spirit after regen = %v, want clamped to spirit_max", got)
 	}
 }

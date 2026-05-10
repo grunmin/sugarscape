@@ -117,10 +117,11 @@ func Setup(w *engine.World) {
 		for i := range env.Cells {
 			env.Cells[i].MortalPop *= scale
 		}
+		env.RecomputeMortalTotal()
 	}
 
-	// Clone complete environment to Next frame.
-	w.Next.Env = env.CloneEnv()
+	// Environment is updated in place; both frames share the same environment grid.
+	w.Next.Env = env
 
 	// Clone initial agents to Next frame (no cultivators initially, converted from mortals).
 	w.Next.Agents = w.Curr.Agents.Clone()

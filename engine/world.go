@@ -11,7 +11,7 @@ type Frame struct {
 func (f *Frame) Clone() *Frame {
 	return &Frame{
 		Agents: f.Agents.Clone(),
-		Env:    f.Env.CloneEnv(),
+		Env:    f.Env,
 	}
 }
 
@@ -42,7 +42,7 @@ func NewWorld(cfg EngineConfig) *World {
 	w := &World{
 		Curr:   f,
 		Next:   f.Clone(),
-		Grid:   NewGrid(cfg.GridWidth, cfg.GridHeight),
+		Grid:   NewSpatialGrid(cfg.GridWidth, cfg.GridHeight),
 		Clock:  NewClock(cfg.TicksPerYear),
 		RNG:    NewRNG(cfg.Seed),
 		Config: cfg,

@@ -1,6 +1,10 @@
 package cultivation
 
-import "github.com/runmin/sugarscape/engine"
+import (
+	"math"
+
+	"github.com/runmin/sugarscape/engine"
+)
 
 // EnvironmentSystem handles spirit energy regeneration and diffusion.
 type EnvironmentSystem struct {
@@ -12,6 +16,14 @@ func (s *EnvironmentSystem) Priority() int { return 1 }
 
 func (s *EnvironmentSystem) Tick(w *engine.World) {
 	cfg := DefaultScenarioConfig()
+	interval := cfg.EnvironmentTickEvery
+	if interval < 1 {
+		interval = 1
+	}
+	if w.Clock.Tick%int64(interval) != 0 {
+		return
+	}
+
 	env := w.Next.Env
 
 	// Ensure base slice is allocated once.
@@ -31,6 +43,7 @@ func (s *EnvironmentSystem) Tick(w *engine.World) {
 			if regen == 0 {
 				regen = cfg.SpiritRegenRate
 			}
+			regen *= float64(interval)
 			next := current
 			if current < maxVal {
 				next = current + regen
@@ -43,7 +56,7 @@ func (s *EnvironmentSystem) Tick(w *engine.World) {
 	})
 
 	// Phase 2: Diffusion from a stable post-regeneration snapshot.
-	diffusionRate := 0.05
+	diffusionRate := 1 - math.Pow(0.95, float64(interval))
 	engine.ParaFor(len(env.Cells), func(start, end int) {
 		for i := start; i < end; i++ {
 			s.base[i] = env.Cells[i].Env0
