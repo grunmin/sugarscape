@@ -23,8 +23,6 @@ var DefaultRealms = []RealmConfig{
 
 // ScenarioConfig holds all configurable parameters for the cultivation world.
 type ScenarioConfig struct {
-	// Initial population
-	InitialBeasts int
 	// Mortal world
 	MortalBaseDensity float64 // average mortals per cell
 	NumTribes         int     // number of tribal centers
@@ -47,16 +45,10 @@ type ScenarioConfig struct {
 	// Lifecycle
 	BaseBirthRate float64
 	BirthCooldown float64
-	// Beast
-	BeastCombatBase    float64
-	BeastQiReward      float64
-	BeastMinPopulation int
-	BeastSpawnPerTick  int
 }
 
 func DefaultScenarioConfig() ScenarioConfig {
 	return ScenarioConfig{
-		InitialBeasts:      200,
 		MortalBaseDensity:  100,
 		NumTribes:          200,
 		MortalLifespan:     70,
@@ -74,10 +66,6 @@ func DefaultScenarioConfig() ScenarioConfig {
 		FleeThreshold:      3.0,
 		BaseBirthRate:      0.005,
 		BirthCooldown:      20,
-		BeastCombatBase:    5,
-		BeastQiReward:      20,
-		BeastMinPopulation: 100,
-		BeastSpawnPerTick:  3,
 	}
 }
 

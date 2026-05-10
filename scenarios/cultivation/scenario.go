@@ -106,22 +106,7 @@ func Setup(w *engine.World) {
 		}
 	}
 
-	// --- Initialize spirit beasts ---
-	for range cfg.InitialBeasts {
-		x := w.RNG.Intn(w.Config.GridWidth)
-		y := w.RNG.Intn(w.Config.GridHeight)
-
-		attrs := engine.NewAttrBag()
-		attrs.Num["age"] = w.RNG.Float64() * 100
-		attrs.Num["combat_power"] = cfg.BeastCombatBase * (0.5 + w.RNG.Float64())
-		attrs.Num["qi"] = 10 + w.RNG.Float64()*20
-		attrs.Num["qi_max"] = 50
-		attrs.Num["lifespan"] = 200 + w.RNG.Float64()*100
-
-		w.Curr.Agents.Add("spirit_beast", x, y, attrs)
-	}
-
-	// Clone initial agents to Next frame.
+	// Clone initial agents to Next frame (no cultivators initially, converted from mortals).
 	w.Next.Agents = w.Curr.Agents.Clone()
 
 	// --- Register systems ---

@@ -16,15 +16,10 @@ func (s *MovementSystem) Tick(w *engine.World) {
 	engine.ParaForRNG(len(agents.ID), func(start, end, workerIdx int) {
 		rng := engine.WorkerRNG(workerIdx)
 		for i := start; i < end; i++ {
-			if !agents.Alive[i] {
+			if !agents.Alive[i] || agents.Kind[i] != "cultivator" {
 				continue
 			}
-			switch agents.Kind[i] {
-			case "cultivator":
-				moveCultivator(rng, agents, env, i, gridW, gridH)
-			case "spirit_beast":
-				moveBeast(agents, env, i, gridW, gridH)
-			}
+			moveCultivator(rng, agents, env, i, gridW, gridH)
 		}
 	})
 }
@@ -70,28 +65,4 @@ func moveCultivator(rng *engine.RNG, agents *engine.AgentStore, env *engine.Grid
 		agents.X[i] = bestX
 		agents.Y[i] = bestY
 	}
-}
-
-func moveBeast(agents *engine.AgentStore, env *engine.Grid, i, gridW, gridH int) {
-	x, y := agents.X[i], agents.Y[i]
-	bestX, bestY := x, y
-	bestSpirit := env.Env0(x, y)
-
-	for dy := -1; dy <= 1; dy++ {
-		for dx := -1; dx <= 1; dx++ {
-			if dx == 0 && dy == 0 {
-				continue
-			}
-			nx := (x + dx + gridW) % gridW
-			ny := (y + dy + gridH) % gridH
-			sp := env.Env0(nx, ny)
-			if sp > bestSpirit {
-				bestX, bestY = nx, ny
-				bestSpirit = sp
-			}
-		}
-	}
-
-	agents.X[i] = bestX
-	agents.Y[i] = bestY
 }

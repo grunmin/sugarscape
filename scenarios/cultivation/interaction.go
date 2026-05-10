@@ -80,17 +80,6 @@ func (s *InteractionSystem) resolveInteraction(w *engine.World, i, j int) Pendin
 	agents := w.Next.Agents
 	kindI, kindJ := agents.Kind[i], agents.Kind[j]
 
-	// Beast vs cultivator: always fight.
-	if (kindI == "spirit_beast" && kindJ == "cultivator") ||
-		(kindI == "cultivator" && kindJ == "spirit_beast") {
-		return PendingFight{Attacker: i, Defender: j}
-	}
-
-	// Beast vs beast: no fight.
-	if kindI == "spirit_beast" && kindJ == "spirit_beast" {
-		return PendingFight{}
-	}
-
 	// Cultivator vs cultivator: cp-based personality-driven.
 	if kindI == "cultivator" && kindJ == "cultivator" {
 		// Same sect: no fight.

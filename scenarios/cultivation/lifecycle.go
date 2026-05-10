@@ -15,9 +15,7 @@ func (s *LifecycleSystem) Priority() int { return 7 }
 func (s *LifecycleSystem) Tick(w *engine.World) {
 	cfg := DefaultScenarioConfig()
 	agents := w.Next.Agents
-	env := w.Next.Env
 	ticksPerYear := float64(w.Config.TicksPerYear)
-	gridW, gridH := w.Config.GridWidth, w.Config.GridHeight
 
 	type birthReq struct {
 		x, y  int
@@ -86,26 +84,7 @@ func (s *LifecycleSystem) Tick(w *engine.World) {
 					w.Stats.RecordBirth()
 				}
 
-			case "spirit_beast":
-				if attrs.Num["age"] >= 200+rng.Float64()*100 {
-					agents.Kill(i)
-					w.Stats.RecordDeath()
-					continue
-				}
-				if rng.Float64() < 0.01 {
-					bEA := engine.NewAttrBag()
-					bEA.Num["age"] = 0
-					bEA.Num["combat_power"] = cfg.BeastCombatBase * (0.5 + rng.Float64())
-					bEA.Num["qi"] = 10
-					bEA.Num["qi_max"] = 50
-					bEA.Num["lifespan"] = 200 + rng.Float64()*100
-					localBirths = append(localBirths, birthReq{
-						x: (agents.X[i] + rng.Intn(3) - 1 + gridW) % gridW,
-						y: (agents.Y[i] + rng.Intn(3) - 1 + gridH) % gridH,
-						kind: "spirit_beast", attrs: bEA,
-					})
-				}
-			}
+		}
 		}
 		if len(localBirths) > 0 {
 			mu.Lock()
@@ -118,23 +97,4 @@ func (s *LifecycleSystem) Tick(w *engine.World) {
 		agents.Add(b.kind, b.x, b.y, b.attrs)
 	}
 
-	beastCount := agents.CountKind("spirit_beast")
-	if beastCount < cfg.BeastMinPopulation {
-		for range cfg.BeastSpawnPerTick {
-			for attempt := 0; attempt < 10; attempt++ {
-				bx := w.RNG.Intn(gridW)
-				by := w.RNG.Intn(gridH)
-				if env.Env0(bx, by) > 40 {
-					bEA := engine.NewAttrBag()
-					bEA.Num["age"] = w.RNG.Float64() * 50
-					bEA.Num["combat_power"] = cfg.BeastCombatBase * (0.5 + w.RNG.Float64())
-					bEA.Num["qi"] = 10
-					bEA.Num["qi_max"] = 50
-					bEA.Num["lifespan"] = 200 + w.RNG.Float64()*100
-					agents.Add("spirit_beast", bx, by, bEA)
-					break
-				}
-			}
-		}
-	}
 }

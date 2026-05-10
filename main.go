@@ -19,9 +19,9 @@ func main() {
 	initElapsed := time.Since(initStart)
 
 	fmt.Println("=== 修仙世界模拟器 ===")
-	fmt.Printf("世界: %d×%d  凡人/格: %.0f  初始妖兽: %d  种子: %d  并行: %d 核\n",
+	fmt.Printf("世界: %d×%d  凡人/格: %.0f  种子: %d  并行: %d 核\n",
 		cfg.GridWidth, cfg.GridHeight,
-		scnCfg.MortalBaseDensity, scnCfg.InitialBeasts, cfg.Seed, cfg.NumWorkers)
+		scnCfg.MortalBaseDensity, cfg.Seed, cfg.NumWorkers)
 	fmt.Printf("部落数: %d  凡人→修仙转化率: %.3f  初始化耗时: %v\n",
 		scnCfg.NumTribes, scnCfg.MortalConvChance, initElapsed.Round(time.Millisecond))
 	fmt.Println()
@@ -29,6 +29,7 @@ func main() {
 	maxTicks := int64(1000)
 	snapshotEvery := 20
 	startTime := time.Now()
+	lastPrint := time.Now()
 
 	fmt.Printf("%-6s %-6s %-8s %-12s %-8s %-8s %-8s %-8s %-8s %-10s\n",
 		"tick", "year", "cultiv", "mortals", "练气", "筑基", "金丹", "元婴", "化神", "elapsed")
@@ -41,8 +42,9 @@ func main() {
 			world.Stats.Snapshot(world.Curr, world.Next.Env, world.Clock.Tick, world.Clock.Year())
 		}
 
-		if world.Clock.Tick%100 == 0 {
+		if time.Since(lastPrint) >= 5*time.Second {
 			printTickStats(world, startTime)
+			lastPrint = time.Now()
 		}
 	}
 
@@ -107,7 +109,6 @@ func printFinalSummary(w *engine.World) {
 	fmt.Println("=== 最终摘要 ===")
 	fmt.Printf("模拟年数: %.0f 年\n", last.Year-first.Year)
 	fmt.Printf("最终修仙者数量: %d\n", last.KindCounts["cultivator"])
-	fmt.Printf("最终妖兽数量: %d\n", last.KindCounts["spirit_beast"])
 	fmt.Printf("凡人总数: %.0f\n", last.TotalMortals)
 	fmt.Println("境界分布:")
 	for _, name := range []string{"练气", "筑基", "金丹", "元婴", "化神"} {
