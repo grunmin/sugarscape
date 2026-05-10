@@ -14,6 +14,7 @@ func (s *LifecycleSystem) Priority() int { return 7 }
 
 func (s *LifecycleSystem) Tick(w *engine.World) {
 	agents := w.Next.Agents
+	env := w.Next.Env
 	ticksPerYear := float64(w.Config.TicksPerYear)
 
 	type deathReq struct {
@@ -25,7 +26,8 @@ func (s *LifecycleSystem) Tick(w *engine.World) {
 	var mu sync.Mutex
 	var allDeaths []deathReq
 
-	engine.ParaFor(len(agents.ID), func(start, end int) {
+	engine.ParaForRNG(len(agents.ID), func(start, end, workerIdx int) {
+		rng := engine.WorkerRNG(workerIdx)
 		var localDeaths []deathReq
 		for i := start; i < end; i++ {
 			if !agents.Alive[i] {
@@ -45,11 +47,19 @@ func (s *LifecycleSystem) Tick(w *engine.World) {
 				rc := GetRealm(realm)
 				lifespan := rc.Lifespan
 
-				if attrs.Num["age"] >= lifespan {
+				x, y := agents.X[i], agents.Y[i]
+				if env.Env0(x, y) < attrs.Num["qi_max"]*0.01 {
+					attrs.Num["low_spirit_years"] += 1.0 / ticksPerYear
+				} else {
+					attrs.Num["low_spirit_years"] = 0
+				}
+
+				lowSpiritDeath := attrs.Num["low_spirit_years"] > lifespan*0.1 && rng.Float64() < 0.3
+				if attrs.Num["age"] >= lifespan || lowSpiritDeath {
 					localDeaths = append(localDeaths, deathReq{
 						idx: i,
-						x:   agents.X[i],
-						y:   agents.Y[i],
+						x:   x,
+						y:   y,
 						qi:  attrs.Num["qi"],
 					})
 					continue

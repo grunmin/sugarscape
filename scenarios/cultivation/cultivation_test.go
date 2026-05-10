@@ -162,6 +162,80 @@ func TestAttackDesireScalesWithQi(t *testing.T) {
 	}
 }
 
+func TestMovementProbabilityScalesWithCellSpirit(t *testing.T) {
+	env := engine.NewGrid(1, 1)
+	env.SetEnv1(0, 0, 100)
+
+	env.SetEnv0(0, 0, 100)
+	if got := movementProbability(env, 0, 0); got != 0 {
+		t.Fatalf("movement probability at full spirit = %v, want 0", got)
+	}
+
+	env.SetEnv0(0, 0, 25)
+	if got := movementProbability(env, 0, 0); got != 0.75 {
+		t.Fatalf("movement probability at quarter spirit = %v, want 0.75", got)
+	}
+
+	env.SetEnv0(0, 0, 0)
+	if got := movementProbability(env, 0, 0); got != 1 {
+		t.Fatalf("movement probability at zero spirit = %v, want 1", got)
+	}
+}
+
+func TestMovedCultivatorDoesNotAbsorbSpirit(t *testing.T) {
+	cfg := engine.DefaultEngineConfig()
+	cfg.GridWidth = 1
+	cfg.GridHeight = 1
+	cfg.NumWorkers = 1
+
+	w := engine.NewWorld(cfg)
+	w.Next.Env.SetEnv0(0, 0, 100)
+	w.Next.Env.SetEnv1(0, 0, 100)
+	attrs := engine.NewAttrBag()
+	attrs.Num["realm"] = 1
+	attrs.Num["qi"] = 0
+	attrs.Num["qi_max"] = 200
+	attrs.Num["cultivation_speed"] = 1
+	attrs.Num["moved_this_tick"] = 1
+	w.Next.Agents.Add("cultivator", 0, 0, attrs)
+
+	(&CultivationSystem{}).Tick(w)
+
+	if got := w.Next.Agents.Attrs[0].Num["qi"]; got != 0 {
+		t.Fatalf("moved cultivator qi = %v, want 0", got)
+	}
+	if got := w.Next.Env.Env0(0, 0); got != 100 {
+		t.Fatalf("cell spirit after moved cultivator = %v, want 100", got)
+	}
+}
+
+func TestStationaryCultivatorAbsorbsSpirit(t *testing.T) {
+	cfg := engine.DefaultEngineConfig()
+	cfg.GridWidth = 1
+	cfg.GridHeight = 1
+	cfg.NumWorkers = 1
+
+	w := engine.NewWorld(cfg)
+	w.Next.Env.SetEnv0(0, 0, 100)
+	w.Next.Env.SetEnv1(0, 0, 100)
+	attrs := engine.NewAttrBag()
+	attrs.Num["realm"] = 1
+	attrs.Num["qi"] = 0
+	attrs.Num["qi_max"] = 200
+	attrs.Num["cultivation_speed"] = 1
+	attrs.Num["moved_this_tick"] = 0
+	w.Next.Agents.Add("cultivator", 0, 0, attrs)
+
+	(&CultivationSystem{}).Tick(w)
+
+	if got := w.Next.Agents.Attrs[0].Num["qi"]; got <= 0 {
+		t.Fatalf("stationary cultivator qi = %v, want > 0", got)
+	}
+	if got := w.Next.Env.Env0(0, 0); got >= 100 {
+		t.Fatalf("cell spirit after stationary cultivator = %v, want < 100", got)
+	}
+}
+
 func TestInteractionOnlyTriggersOnSameCell(t *testing.T) {
 	cfg := engine.DefaultEngineConfig()
 	cfg.GridWidth = 5
@@ -231,6 +305,36 @@ func TestLifecycleDoesNotBirthCultivators(t *testing.T) {
 	}
 	if !w.Next.Agents.Alive[0] {
 		t.Fatal("cultivator died unexpectedly")
+	}
+}
+
+func TestLowSpiritExposureCanKillCultivator(t *testing.T) {
+	cfg := engine.DefaultEngineConfig()
+	cfg.GridWidth = 1
+	cfg.GridHeight = 1
+	cfg.NumWorkers = 1
+
+	w := engine.NewWorld(cfg)
+	w.Next.Env.SetEnv0(0, 0, 0)
+	attrs := engine.NewAttrBag()
+	attrs.Num["realm"] = 1
+	attrs.Num["qi"] = 123
+	attrs.Num["qi_max"] = 200
+	attrs.Num["age"] = 30
+	attrs.Num["low_spirit_years"] = 13
+	w.Next.Agents.Add("cultivator", 0, 0, attrs)
+
+	tries := 0
+	for w.Next.Agents.Alive[0] && tries < 100 {
+		(&LifecycleSystem{}).Tick(w)
+		tries++
+	}
+
+	if w.Next.Agents.Alive[0] {
+		t.Fatal("cultivator survived repeated low-spirit death checks, want eventual death")
+	}
+	if got := w.Next.Env.Env0(0, 0); got < 123 {
+		t.Fatalf("cell spirit after low-spirit death = %v, want at least 123", got)
 	}
 }
 

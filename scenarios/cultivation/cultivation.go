@@ -12,7 +12,7 @@ type CultivationSystem struct {
 }
 
 func (s *CultivationSystem) Name() string  { return "CultivationSystem" }
-func (s *CultivationSystem) Priority() int { return 2 }
+func (s *CultivationSystem) Priority() int { return 3 }
 
 func (s *CultivationSystem) Tick(w *engine.World) {
 	cfg := DefaultScenarioConfig()
@@ -40,20 +40,23 @@ func (s *CultivationSystem) Tick(w *engine.World) {
 				attrs.Num["breakthrough_cooldown"]--
 			}
 
-			x, y := agents.X[i], agents.Y[i]
-			cellIdx := y*gridW + x
-			cellLock := &s.cellLocks[cellIdx%len(s.cellLocks)]
-			cellLock.Lock()
-			spirit := env.Cells[cellIdx].Env0
-			baseAbsorb := spirit * attrs.Num["cultivation_speed"] * cfg.CultivationSpeed
-			absorb := baseAbsorb * rc.CultSpeedMult
-			if absorb > spirit {
-				absorb = spirit
-			}
-			env.Cells[cellIdx].Env0 = spirit - absorb
-			cellLock.Unlock()
+			if attrs.Num["moved_this_tick"] != 1 {
+				x, y := agents.X[i], agents.Y[i]
+				cellIdx := y*gridW + x
+				cellLock := &s.cellLocks[cellIdx%len(s.cellLocks)]
+				cellLock.Lock()
+				spirit := env.Cells[cellIdx].Env0
+				baseAbsorb := spirit * attrs.Num["cultivation_speed"] * cfg.CultivationSpeed
+				absorb := baseAbsorb * rc.CultSpeedMult
+				if absorb > spirit {
+					absorb = spirit
+				}
+				env.Cells[cellIdx].Env0 = spirit - absorb
+				cellLock.Unlock()
 
-			attrs.Num["qi"] += absorb
+				attrs.Num["qi"] += absorb
+			}
+
 			qiMax := cfg.BaseQi * rc.QiMultiplier
 			attrs.Num["qi_max"] = qiMax
 			if attrs.Num["qi"] > qiMax {

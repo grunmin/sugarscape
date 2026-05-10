@@ -10,7 +10,7 @@ import (
 type MovementSystem struct{}
 
 func (s *MovementSystem) Name() string  { return "MovementSystem" }
-func (s *MovementSystem) Priority() int { return 3 }
+func (s *MovementSystem) Priority() int { return 2 }
 
 func (s *MovementSystem) Tick(w *engine.World) {
 	agents := w.Next.Agents
@@ -19,6 +19,7 @@ func (s *MovementSystem) Tick(w *engine.World) {
 	xSnapshot := append([]int(nil), agents.X...)
 	ySnapshot := append([]int(nil), agents.Y...)
 	aliveSnapshot := append([]bool(nil), agents.Alive...)
+	results := make([]moveResult, len(agents.ID))
 
 	engine.ParaForRNG(len(agents.ID), func(start, end, workerIdx int) {
 		rng := engine.WorkerRNG(workerIdx)
@@ -26,9 +27,28 @@ func (s *MovementSystem) Tick(w *engine.World) {
 			if !agents.Alive[i] || agents.Kind[i] != "cultivator" {
 				continue
 			}
-			moveCultivator(rng, agents, env, w.Grid, i, gridW, gridH, xSnapshot, ySnapshot, aliveSnapshot)
+			results[i] = moveCultivator(rng, agents, env, w.Grid, i, gridW, gridH, xSnapshot, ySnapshot, aliveSnapshot)
 		}
 	})
+
+	for i, result := range results {
+		if !result.valid {
+			continue
+		}
+		agents.X[i] = result.x
+		agents.Y[i] = result.y
+		if result.moved {
+			agents.Attrs[i].Num["moved_this_tick"] = 1
+		} else {
+			agents.Attrs[i].Num["moved_this_tick"] = 0
+		}
+	}
+}
+
+type moveResult struct {
+	valid bool
+	x, y  int
+	moved bool
 }
 
 func moveCultivator(
@@ -39,7 +59,7 @@ func moveCultivator(
 	i, gridW, gridH int,
 	xSnapshot, ySnapshot []int,
 	aliveSnapshot []bool,
-) {
+) moveResult {
 	realm := int(agents.Attrs[i].Num["realm"])
 	if realm < 1 {
 		realm = 1
@@ -52,10 +72,19 @@ func moveCultivator(
 		steps++
 	}
 
+	result := moveResult{valid: true, x: xSnapshot[i], y: ySnapshot[i]}
 	for range steps {
-		x, y := agents.X[i], agents.Y[i]
+		x, y := result.x, result.y
+		if rng.Float64() >= movementProbability(env, x, y) {
+			continue
+		}
+
+		startX, startY := x, y
 		if chaseX, chaseY, ok := chaseTargetPosition(rng, agents, spatial, i, x, y, gridW, gridH, rc.DetectRange, xSnapshot, ySnapshot, aliveSnapshot); ok {
-			agents.X[i], agents.Y[i] = chaseX, chaseY
+			result.x, result.y = chaseX, chaseY
+			if chaseX != startX || chaseY != startY {
+				result.moved = true
+			}
 			continue
 		}
 
@@ -88,9 +117,29 @@ func moveCultivator(
 			targetX, targetY = randomAdjacentPosition(rng, x, y, gridW, gridH)
 		}
 
-		agents.X[i] = targetX
-		agents.Y[i] = targetY
+		result.x = targetX
+		result.y = targetY
+		if targetX != startX || targetY != startY {
+			result.moved = true
+		}
 	}
+	return result
+}
+
+func movementProbability(env *engine.Grid, x, y int) float64 {
+	spirit := env.Env0(x, y)
+	maxSpirit := env.Env1(x, y)
+	if maxSpirit <= 0 {
+		return 1
+	}
+	prob := 1 - spirit/maxSpirit
+	if prob < 0 {
+		return 0
+	}
+	if prob > 1 {
+		return 1
+	}
+	return prob
 }
 
 func chaseTargetPosition(
