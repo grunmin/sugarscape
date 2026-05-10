@@ -88,10 +88,16 @@ func (s *InteractionSystem) resolveInteraction(w *engine.World, i, j int) Pendin
 		cpI := agents.Attrs[i].Num["combat_power"]
 		cpJ := agents.Attrs[j].Num["combat_power"]
 		if cpJ > 0 && cpI/cpJ > cfg.FleeThreshold {
-			return PendingFight{Attacker: i, Defender: j}
+			if w.RNG.Float64() < qiFraction(agents.Attrs[i]) {
+				return PendingFight{Attacker: i, Defender: j}
+			}
+			return PendingFight{}
 		}
 		if cpI > 0 && cpJ/cpI > cfg.FleeThreshold {
-			return PendingFight{Attacker: j, Defender: i}
+			if w.RNG.Float64() < qiFraction(agents.Attrs[j]) {
+				return PendingFight{Attacker: j, Defender: i}
+			}
+			return PendingFight{}
 		}
 
 		if attackDesire(agents.Attrs[i], agents.Attrs[j]) > 0.5 {
@@ -121,5 +127,20 @@ func attackDesire(attacker, defender engine.AttrBag) float64 {
 	if cpDiffNorm < 0 {
 		sign = -1.0
 	}
-	return aggression * sign * math.Sqrt(math.Abs(cpDiffNorm))
+	return aggression * sign * math.Sqrt(math.Abs(cpDiffNorm)) * qiFraction(attacker)
+}
+
+func qiFraction(attrs engine.AttrBag) float64 {
+	qiMax := attrs.Num["qi_max"]
+	if qiMax <= 0 {
+		return 1
+	}
+	frac := attrs.Num["qi"] / qiMax
+	if frac < 0 {
+		return 0
+	}
+	if frac > 1 {
+		return 1
+	}
+	return frac
 }

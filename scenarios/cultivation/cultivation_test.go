@@ -93,9 +93,13 @@ func TestStrongerSecondCultivatorAttacksOnFleeThreshold(t *testing.T) {
 	weak := engine.NewAttrBag()
 	weak.Num["realm"] = 1
 	weak.Num["combat_power"] = 10
+	weak.Num["qi"] = 100
+	weak.Num["qi_max"] = 100
 	strong := engine.NewAttrBag()
 	strong.Num["realm"] = 1
 	strong.Num["combat_power"] = 40
+	strong.Num["qi"] = 100
+	strong.Num["qi_max"] = 100
 
 	w.Next.Agents.Add("cultivator", 1, 1, weak)
 	w.Next.Agents.Add("cultivator", 1, 1, strong)
@@ -110,6 +114,52 @@ func TestStrongerSecondCultivatorAttacksOnFleeThreshold(t *testing.T) {
 		t.Fatalf("fight = %+v, want attacker 1 defender 0", pendingFights[0])
 	}
 	pendingFights = nil
+}
+
+func TestFleeThresholdAttackScalesWithQi(t *testing.T) {
+	cfg := engine.DefaultEngineConfig()
+	cfg.GridWidth = 3
+	cfg.GridHeight = 3
+	cfg.NumWorkers = 1
+
+	w := engine.NewWorld(cfg)
+	weak := engine.NewAttrBag()
+	weak.Num["realm"] = 1
+	weak.Num["combat_power"] = 10
+	weak.Num["qi"] = 100
+	weak.Num["qi_max"] = 100
+	exhaustedStrong := engine.NewAttrBag()
+	exhaustedStrong.Num["realm"] = 1
+	exhaustedStrong.Num["combat_power"] = 40
+	exhaustedStrong.Num["qi"] = 0
+	exhaustedStrong.Num["qi_max"] = 100
+
+	w.Next.Agents.Add("cultivator", 1, 1, weak)
+	w.Next.Agents.Add("cultivator", 1, 1, exhaustedStrong)
+	pendingFights = nil
+
+	(&InteractionSystem{}).Tick(w)
+
+	if len(pendingFights) != 0 {
+		t.Fatalf("pending fights = %d, want 0 for exhausted stronger cultivator", len(pendingFights))
+	}
+}
+
+func TestAttackDesireScalesWithQi(t *testing.T) {
+	attacker := engine.NewAttrBag()
+	attacker.Num["aggression"] = 1
+	attacker.Num["perceived_cp_mult"] = 1
+	attacker.Num["combat_power"] = 100
+	attacker.Num["qi"] = 50
+	attacker.Num["qi_max"] = 100
+	defender := engine.NewAttrBag()
+	defender.Num["combat_power"] = 25
+
+	got := attackDesire(attacker, defender)
+	want := 0.5 * math.Sqrt(0.75)
+	if math.Abs(got-want) > 1e-12 {
+		t.Fatalf("attack desire = %v, want %v", got, want)
+	}
 }
 
 func TestInteractionOnlyTriggersOnSameCell(t *testing.T) {

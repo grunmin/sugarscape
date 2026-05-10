@@ -147,7 +147,10 @@
   - 自视战力 = 自身实际战力 × perceived_cp_mult
   - 对方战力 = 对方实际战力（无偏估计）
   - cp_diff_norm = (自视战力 - 对方战力) / max(自视战力, 对方战力)   → 归一化到 [-1, 1]
-  - 攻击欲望 = aggression × sign(cp_diff_norm) × sqrt(|cp_diff_norm|)
+  - qi_frac = 当前灵气 / 灵气上限，钳制在 [0, 1]
+  - 基础攻击欲望 = aggression × sign(cp_diff_norm) × sqrt(|cp_diff_norm|)
+  - 攻击欲望 = 基础攻击欲望 × qi_frac
+  - 灵气越接近枯竭，主动攻击和追击意愿越低；灵气为 0 时不会主动攻击
   - cp_diff_norm > 0（自认更强）：攻击欲望为正，倾向攻击
   - cp_diff_norm < 0（自认更弱）：攻击欲望为负，倾向逃离
   - cp_diff_norm ≈ 0（实力相近）：攻击欲望 ≈ 0，无视
@@ -179,12 +182,13 @@
 
 ### 4.2 修仙者 vs 修仙者
 - 同宗门：不发生战斗
-- 战力悬殊判断：战力比 > [FleeThreshold=3.0]，强方直接攻击弱方，不发生对抗
+- 战力悬殊判断：战力比 > [FleeThreshold=3.0] 时，强方以自身 `qi_frac` 为概率直接攻击弱方，不发生攻击欲望对抗；未触发则无视
 - 计算攻击方的攻击欲望（基于战力而非境界，见 3.5 节）：
   - 自视战力 = 攻击方实际战力 × perceived_cp_mult
   - 对方战力 = 防御方实际战力
   - cp_diff_norm = (自视战力 - 对方战力) / max(自视战力, 对方战力)
-  - attack_desire = aggression × sign(cp_diff_norm) × sqrt(|cp_diff_norm|)
+  - qi_frac = 攻击方当前灵气 / 攻击方灵气上限
+  - attack_desire = aggression × sign(cp_diff_norm) × sqrt(|cp_diff_norm|) × qi_frac
 - 决策：
   - attack_desire > 0.5：攻击
   - attack_desire ≤ 0.5：无视（不发生战斗）
