@@ -159,6 +159,8 @@ func printTickStats(w *engine.World, startTime time.Time, pausedDuration time.Du
 		realms[1], realms[2], realms[3], realms[4], realms[5], elapsed)
 	printHighRealmQiStats(qiStats)
 	printWorldSpiritStats(w.Curr.Env)
+	printSectStats(w.Curr.Agents)
+	printSectRealmShare(w.Curr.Agents)
 	tracker.printReport(w)
 	printNotableEvents(w.Stats.DrainNotableEvents())
 }
@@ -264,6 +266,73 @@ func calcWorldSpiritStats(env *engine.Grid) worldSpiritStats {
 		stats.highShare = highSum / total
 	}
 	return stats
+}
+
+func printSectStats(agents *engine.AgentStore) {
+	stats := cultivation.CalculateSectStats(agents)
+	sort.SliceStable(stats, func(i, j int) bool {
+		if stats[i].CombatValue == stats[j].CombatValue {
+			return stats[i].Name < stats[j].Name
+		}
+		return stats[i].CombatValue > stats[j].CombatValue
+	})
+
+	fmt.Println("  宗门战力")
+	fmt.Printf("    %-6s %-8s %-10s %-14s %-7s %-7s %-7s %-7s %-7s\n",
+		"宗门", "人数", "最高战力", "战力值(M)", "练气", "筑基", "金丹", "元婴", "化神")
+	for _, stat := range stats {
+		fmt.Printf("    %-6s %-8d %-10.0f %-14.0f %-7d %-7d %-7d %-7d %-7d\n",
+			stat.Name, stat.Count, stat.MaxCombatPower, stat.CombatValue/1_000_000,
+			stat.RealmCounts[1], stat.RealmCounts[2], stat.RealmCounts[3], stat.RealmCounts[4], stat.RealmCounts[5])
+	}
+}
+
+type sectRealmShare struct {
+	realm     int
+	sectCount int
+	loose     int
+}
+
+func printSectRealmShare(agents *engine.AgentStore) {
+	shares := calcSectRealmShare(agents)
+	fmt.Println("  宗门/散修境界占比")
+	fmt.Printf("    %-4s %-8s %-8s %-8s %-8s\n", "境界", "宗门", "散修", "宗门占比", "散修占比")
+	for _, share := range shares {
+		total := share.sectCount + share.loose
+		sectPct := 0.0
+		loosePct := 0.0
+		if total > 0 {
+			sectPct = float64(share.sectCount) / float64(total) * 100
+			loosePct = float64(share.loose) / float64(total) * 100
+		}
+		fmt.Printf("    %-4s %-8d %-8d %-7.1f%% %-7.1f%%\n",
+			realmNameForLevel(share.realm), share.sectCount, share.loose, sectPct, loosePct)
+	}
+}
+
+func calcSectRealmShare(agents *engine.AgentStore) []sectRealmShare {
+	shares := make([]sectRealmShare, 5)
+	for i := range shares {
+		shares[i].realm = i + 1
+	}
+	for i := range agents.ID {
+		if !agents.Alive[i] || agents.Kind[i] != "cultivator" {
+			continue
+		}
+		realm := int(agents.Attrs[i].Num["realm"])
+		if realm < 1 {
+			realm = 1
+		}
+		if realm > 5 {
+			realm = 5
+		}
+		if agents.Attrs[i].Str["sect"] == "" {
+			shares[realm-1].loose++
+		} else {
+			shares[realm-1].sectCount++
+		}
+	}
+	return shares
 }
 
 func percentileValue(sorted []float64, q float64) float64 {
@@ -840,6 +909,8 @@ func printFinalSummary(w *engine.World) {
 			fmt.Printf("  %s: n=%d avg=%.4f\n", rs.Name, rs.Count, rs.Avg)
 		}
 	}
+	printSectStats(w.Curr.Agents)
+	printSectRealmShare(w.Curr.Agents)
 	fmt.Printf("总死亡: %d  总出生: %d  总突破: %d  凡人转化: %d\n",
 		sumInt(snaps, func(dp engine.DataPoint) int { return dp.Deaths }),
 		sumInt(snaps, func(dp engine.DataPoint) int { return dp.Births }),

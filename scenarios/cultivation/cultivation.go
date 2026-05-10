@@ -1,6 +1,7 @@
 package cultivation
 
 import (
+	"math"
 	"sync"
 
 	"github.com/runmin/sugarscape/engine"
@@ -34,6 +35,7 @@ func (s *CultivationSystem) Tick(w *engine.World) {
 
 	var deathMu sync.Mutex
 	var breakthroughDeaths []breakthroughDeathReq
+	sectRealmCounts := countSectRealms(agents)
 
 	engine.ParaForRNG(len(agents.ID), func(start, end, workerIdx int) {
 		rng := engine.WorkerRNG(workerIdx)
@@ -86,7 +88,8 @@ func (s *CultivationSystem) Tick(w *engine.World) {
 				attrs.Num["breakthrough_cooldown"] <= 0 &&
 				attrs.Num["breakthrough_sustain_ticks"] >= float64(breakthroughSustainTicks(cfg, realm)) {
 
-				if rng.Float64() < rc.BreakthroughBase {
+				mentors := oneRealmHigherMentors(*attrs, realm, sectRealmCounts)
+				if rng.Float64() < breakthroughProbability(rc, *attrs, cfg, mentors) {
 					newRealm := realm + 1
 					newRC := GetRealm(newRealm)
 					newQiMax := cfg.BaseQi * newRC.QiMultiplier
@@ -180,6 +183,65 @@ func breakthroughSustainTicks(cfg ScenarioConfig, realm int) int {
 		return 1
 	}
 	return cfg.BreakthroughSustainTicks[len(cfg.BreakthroughSustainTicks)-1]
+}
+
+func breakthroughProbability(rc RealmConfig, attrs engine.AttrBag, cfg ScenarioConfig, oneRealmHigherMentors int) float64 {
+	prob := rc.BreakthroughBase
+	if attrs.Str["sect"] != "" {
+		prob *= 1 + cfg.SectBreakthroughBonus
+		prob *= mentorBreakthroughMultiplier(oneRealmHigherMentors, cfg)
+	}
+	if prob > 1 {
+		return 1
+	}
+	if prob < 0 {
+		return 0
+	}
+	return prob
+}
+
+func mentorBreakthroughMultiplier(mentors int, cfg ScenarioConfig) float64 {
+	if mentors <= 0 || cfg.SectMentorBonusCap <= 0 {
+		return 1
+	}
+	scale := cfg.SectMentorScale
+	if scale <= 0 {
+		scale = 1
+	}
+	root := math.Sqrt(float64(mentors))
+	return 1 + cfg.SectMentorBonusCap*root/(root+scale)
+}
+
+func countSectRealms(agents *engine.AgentStore) map[string][6]int {
+	counts := make(map[string][6]int)
+	for i := range agents.ID {
+		if !agents.Alive[i] || agents.Kind[i] != "cultivator" {
+			continue
+		}
+		sect := agents.Attrs[i].Str["sect"]
+		if sect == "" {
+			continue
+		}
+		realm := int(agents.Attrs[i].Num["realm"])
+		if realm < 1 {
+			realm = 1
+		}
+		if realm > 5 {
+			realm = 5
+		}
+		realmCounts := counts[sect]
+		realmCounts[realm]++
+		counts[sect] = realmCounts
+	}
+	return counts
+}
+
+func oneRealmHigherMentors(attrs engine.AttrBag, realm int, sectRealmCounts map[string][6]int) int {
+	sect := attrs.Str["sect"]
+	if sect == "" || realm < 1 || realm >= 5 {
+		return 0
+	}
+	return sectRealmCounts[sect][realm+1]
 }
 
 func updateCombatPower(attrs *engine.AttrBag, cfg ScenarioConfig) {

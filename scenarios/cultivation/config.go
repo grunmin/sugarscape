@@ -49,8 +49,12 @@ type ScenarioConfig struct {
 	BreakthroughCD             int     // ticks of cooldown after failed breakthrough
 	JindanBreakFailDeathChance float64
 	// Sects
-	SectMembershipChance float64
-	SectAllyCombatAssist float64 // fraction of same-sect same-cell combat power counted in attack judgment
+	SectMembershipChance  float64
+	SectAllyCombatAssist  float64 // fraction of same-sect same-cell combat power counted in attack judgment
+	SectBreakthroughBonus float64 // relative breakthrough probability bonus for sect cultivators
+	SectMentorBonusCap    float64 // max extra breakthrough multiplier from one-realm-higher sect mentors
+	SectMentorScale       float64 // saturation scale for one-realm-higher mentor count
+	SectRecruitBaseWeight float64 // minimum recruit weight per sect to avoid permanent cold-start starvation
 	// Combat
 	CombatDeathChance    float64
 	CombatCostBase       float64 // fraction of opponent qi paid by winner in combat
@@ -86,6 +90,10 @@ func DefaultScenarioConfig() ScenarioConfig {
 		JindanBreakFailDeathChance:         0.30,
 		SectMembershipChance:               0.20,
 		SectAllyCombatAssist:               0.25,
+		SectBreakthroughBonus:              0.30,
+		SectMentorBonusCap:                 0.50,
+		SectMentorScale:                    10,
+		SectRecruitBaseWeight:              100,
 		CombatDeathChance:                  0.3,
 		CombatCostBase:                     0.20,
 		CombatSelfMinCost:                  0.02,

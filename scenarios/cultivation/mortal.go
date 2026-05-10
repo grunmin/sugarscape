@@ -1,6 +1,10 @@
 package cultivation
 
-import "github.com/runmin/sugarscape/engine"
+import (
+	"math"
+
+	"github.com/runmin/sugarscape/engine"
+)
 
 // MortalSystem handles mortal population dynamics and conversion to cultivators.
 type MortalSystem struct {
@@ -43,6 +47,7 @@ func (s *MortalSystem) Tick(w *engine.World) {
 	if convs > int(env.TotalMortals()) {
 		convs = int(env.TotalMortals())
 	}
+	recruitWeights := sectRecruitWeights(w.Next.Agents)
 
 	for range convs {
 		sr := sampleMortalSpawn(rng, env, s.maxMortalPop)
@@ -55,7 +60,7 @@ func (s *MortalSystem) Tick(w *engine.World) {
 		if env.AddMortal(sr.x, sr.y, -1) <= 0 {
 			env.SetMortal(sr.x, sr.y, 0)
 		}
-		spawnCultivator(w, sr.x, sr.y)
+		spawnCultivator(w, sr.x, sr.y, recruitWeights)
 		w.Stats.RecordMortalConversion()
 	}
 }
@@ -124,7 +129,7 @@ func sampleMortalSpawn(rng *engine.RNG, env *engine.Grid, maxPop float64) spawnR
 }
 
 // spawnCultivator creates a new 练气 cultivator. Called serially, uses w.RNG.
-func spawnCultivator(w *engine.World, x, y int) {
+func spawnCultivator(w *engine.World, x, y int, recruitWeights []float64) {
 	cfg := DefaultScenarioConfig()
 	rc := GetRealm(1)
 	rng := w.RNG
@@ -144,7 +149,7 @@ func spawnCultivator(w *engine.World, x, y int) {
 	strategies := []string{"aggressive", "peaceful", "merchant", "hermit", "bandit"}
 	attrs.Str["strategy"] = strategies[rng.Intn(len(strategies))]
 	if rng.Float64() < cfg.SectMembershipChance {
-		attrs.Str["sect"] = weightedSectName(rng)
+		attrs.Str["sect"] = weightedSectName(rng, recruitWeights)
 	}
 
 	w.Next.Agents.Add("cultivator", x, y, attrs)
@@ -154,6 +159,55 @@ var (
 	sectNames   = []string{"宗门1", "宗门2", "宗门3", "宗门4", "宗门5", "宗门6", "宗门7"}
 	sectWeights []float64
 )
+
+// SectStat summarizes a sect's live cultivator population and combat standing.
+type SectStat struct {
+	Name           string
+	Count          int
+	MaxCombatPower float64
+	CombatValue    float64
+	RealmCounts    [6]int
+}
+
+func SectNames() []string {
+	names := make([]string, len(sectNames))
+	copy(names, sectNames)
+	return names
+}
+
+func CalculateSectStats(agents *engine.AgentStore) []SectStat {
+	stats := make([]SectStat, len(sectNames))
+	index := make(map[string]int, len(sectNames))
+	for i, name := range sectNames {
+		stats[i].Name = name
+		index[name] = i
+	}
+
+	for i := range agents.ID {
+		if !agents.Alive[i] || agents.Kind[i] != "cultivator" {
+			continue
+		}
+		idx, ok := index[agents.Attrs[i].Str["sect"]]
+		if !ok {
+			continue
+		}
+		cp := agents.Attrs[i].Num["combat_power"]
+		stats[idx].Count++
+		stats[idx].CombatValue += cp * cp
+		realm := int(agents.Attrs[i].Num["realm"])
+		if realm < 1 {
+			realm = 1
+		}
+		if realm > 5 {
+			realm = 5
+		}
+		stats[idx].RealmCounts[realm]++
+		if cp > stats[idx].MaxCombatPower {
+			stats[idx].MaxCombatPower = cp
+		}
+	}
+	return stats
+}
 
 func initializeSectWeights(rng *engine.RNG) {
 	sectWeights = make([]float64, len(sectNames))
@@ -171,13 +225,44 @@ func initializeSectWeights(rng *engine.RNG) {
 	}
 }
 
-func weightedSectName(rng *engine.RNG) string {
+func sectRecruitWeights(agents *engine.AgentStore) []float64 {
+	cfg := DefaultScenarioConfig()
+	stats := CalculateSectStats(agents)
+	weights := make([]float64, len(stats))
+	total := 0.0
+	for i, stat := range stats {
+		weights[i] = cfg.SectRecruitBaseWeight + math.Sqrt(stat.CombatValue)
+		total += weights[i]
+	}
+	if total > 0 {
+		return weights
+	}
+	if len(sectWeights) != len(sectNames) {
+		initializeSectWeights(engine.NewRNG(1))
+	}
+	copy(weights, sectWeights)
+	return weights
+}
+
+func weightedSectName(rng *engine.RNG, weights []float64) string {
 	if len(sectWeights) != len(sectNames) {
 		initializeSectWeights(rng)
 	}
+	if len(weights) != len(sectNames) {
+		weights = sectWeights
+	}
 	roll := rng.Float64()
+	total := 0.0
+	for _, weight := range weights {
+		total += weight
+	}
+	if total <= 0 {
+		weights = sectWeights
+		total = 1
+	}
+	roll *= total
 	acc := 0.0
-	for i, weight := range sectWeights {
+	for i, weight := range weights {
 		acc += weight
 		if roll <= acc {
 			return sectNames[i]

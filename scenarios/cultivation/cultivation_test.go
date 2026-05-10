@@ -164,6 +164,69 @@ func TestDefaultBreakthroughThresholdsMatchStrategy(t *testing.T) {
 	}
 }
 
+func TestSectBreakthroughProbabilityBonus(t *testing.T) {
+	cfg := DefaultScenarioConfig()
+	rc := DefaultRealms[0]
+	loose := engine.NewAttrBag()
+	sect := engine.NewAttrBag()
+	sect.Str["sect"] = "宗门1"
+
+	if got := breakthroughProbability(rc, loose, cfg, 10); got != rc.BreakthroughBase {
+		t.Fatalf("loose breakthrough probability = %v, want %v", got, rc.BreakthroughBase)
+	}
+	want := rc.BreakthroughBase * 1.3
+	if got := breakthroughProbability(rc, sect, cfg, 0); got != want {
+		t.Fatalf("sect breakthrough probability = %v, want %v", got, want)
+	}
+}
+
+func TestSectMentorsIncreaseBreakthroughProbability(t *testing.T) {
+	cfg := DefaultScenarioConfig()
+	rc := DefaultRealms[0]
+	sect := engine.NewAttrBag()
+	sect.Str["sect"] = "宗门1"
+
+	withoutMentor := breakthroughProbability(rc, sect, cfg, 0)
+	withMentor := breakthroughProbability(rc, sect, cfg, 25)
+	wantMultiplier := 1 + cfg.SectMentorBonusCap*5/(5+cfg.SectMentorScale)
+	want := withoutMentor * wantMultiplier
+	if math.Abs(withMentor-want) > 1e-12 {
+		t.Fatalf("mentor breakthrough probability = %v, want %v", withMentor, want)
+	}
+	if withMentor <= withoutMentor {
+		t.Fatalf("mentor probability = %v, want above no-mentor probability %v", withMentor, withoutMentor)
+	}
+}
+
+func TestOneRealmHigherMentorsOnlyCountSameSectNextRealm(t *testing.T) {
+	w := engine.NewWorld(engine.DefaultEngineConfig())
+	lianqi := engine.NewAttrBag()
+	lianqi.Num["realm"] = 1
+	lianqi.Str["sect"] = "宗门1"
+	zhuji := engine.NewAttrBag()
+	zhuji.Num["realm"] = 2
+	zhuji.Str["sect"] = "宗门1"
+	jindan := engine.NewAttrBag()
+	jindan.Num["realm"] = 3
+	jindan.Str["sect"] = "宗门1"
+	otherZhuji := engine.NewAttrBag()
+	otherZhuji.Num["realm"] = 2
+	otherZhuji.Str["sect"] = "宗门2"
+
+	w.Next.Agents.Add("cultivator", 1, 1, lianqi)
+	w.Next.Agents.Add("cultivator", 1, 1, zhuji)
+	w.Next.Agents.Add("cultivator", 1, 1, jindan)
+	w.Next.Agents.Add("cultivator", 1, 1, otherZhuji)
+
+	counts := countSectRealms(w.Next.Agents)
+	if got := oneRealmHigherMentors(lianqi, 1, counts); got != 1 {
+		t.Fatalf("lianqi one-realm-higher mentors = %d, want 1", got)
+	}
+	if got := oneRealmHigherMentors(zhuji, 2, counts); got != 1 {
+		t.Fatalf("zhuji one-realm-higher mentors = %d, want 1", got)
+	}
+}
+
 func TestBreakthroughToHuashenRecordsBirthReason(t *testing.T) {
 	oldBreakthrough := DefaultRealms[3].BreakthroughBase
 	DefaultRealms[3].BreakthroughBase = 1.0
@@ -584,6 +647,18 @@ func TestSectDefaultsMatchStrategy(t *testing.T) {
 	if cfg.SectAllyCombatAssist != 0.25 {
 		t.Fatalf("sect ally combat assist = %v, want 0.25", cfg.SectAllyCombatAssist)
 	}
+	if cfg.SectBreakthroughBonus != 0.30 {
+		t.Fatalf("sect breakthrough bonus = %v, want 0.30", cfg.SectBreakthroughBonus)
+	}
+	if cfg.SectMentorBonusCap != 0.50 {
+		t.Fatalf("sect mentor bonus cap = %v, want 0.50", cfg.SectMentorBonusCap)
+	}
+	if cfg.SectMentorScale != 10 {
+		t.Fatalf("sect mentor scale = %v, want 10", cfg.SectMentorScale)
+	}
+	if cfg.SectRecruitBaseWeight != 100 {
+		t.Fatalf("sect recruit base weight = %v, want 100", cfg.SectRecruitBaseWeight)
+	}
 	if len(sectNames) != 7 {
 		t.Fatalf("sect count = %d, want 7", len(sectNames))
 	}
@@ -616,6 +691,61 @@ func TestSameSectCellCombatPowerSupportsAttackJudgment(t *testing.T) {
 	want := 100*1.2 + 80*cfg.SectAllyCombatAssist
 	if math.Abs(got-want) > 1e-12 {
 		t.Fatalf("effective self combat power = %v, want %v", got, want)
+	}
+}
+
+func TestSectCombatStatsUseSquaredCombatPower(t *testing.T) {
+	w := engine.NewWorld(engine.DefaultEngineConfig())
+	a := engine.NewAttrBag()
+	a.Num["combat_power"] = 3
+	a.Num["realm"] = 1
+	a.Str["sect"] = "宗门1"
+	b := engine.NewAttrBag()
+	b.Num["combat_power"] = 4
+	b.Num["realm"] = 3
+	b.Str["sect"] = "宗门1"
+	c := engine.NewAttrBag()
+	c.Num["combat_power"] = 10
+	c.Num["realm"] = 4
+	c.Str["sect"] = "宗门2"
+
+	w.Next.Agents.Add("cultivator", 1, 1, a)
+	w.Next.Agents.Add("cultivator", 1, 1, b)
+	w.Next.Agents.Add("cultivator", 1, 1, c)
+
+	stats := CalculateSectStats(w.Next.Agents)
+	if stats[0].Count != 2 || stats[0].MaxCombatPower != 4 || stats[0].CombatValue != 25 {
+		t.Fatalf("sect1 stats = %+v, want count=2 max=4 value=25", stats[0])
+	}
+	if stats[0].RealmCounts[1] != 1 || stats[0].RealmCounts[3] != 1 {
+		t.Fatalf("sect1 realm counts = %+v, want one lianqi and one jindan", stats[0].RealmCounts)
+	}
+	if stats[1].Count != 1 || stats[1].MaxCombatPower != 10 || stats[1].CombatValue != 100 {
+		t.Fatalf("sect2 stats = %+v, want count=1 max=10 value=100", stats[1])
+	}
+	if stats[1].RealmCounts[4] != 1 {
+		t.Fatalf("sect2 realm counts = %+v, want one yuanying", stats[1].RealmCounts)
+	}
+}
+
+func TestSectRecruitWeightsUseSqrtCombatValue(t *testing.T) {
+	w := engine.NewWorld(engine.DefaultEngineConfig())
+	a := engine.NewAttrBag()
+	a.Num["combat_power"] = 3
+	a.Str["sect"] = "宗门1"
+	b := engine.NewAttrBag()
+	b.Num["combat_power"] = 6
+	b.Str["sect"] = "宗门2"
+
+	w.Next.Agents.Add("cultivator", 1, 1, a)
+	w.Next.Agents.Add("cultivator", 1, 1, b)
+
+	weights := sectRecruitWeights(w.Next.Agents)
+	if weights[0] != 103 || weights[1] != 106 {
+		t.Fatalf("sect recruit weights = %v, want first two weights 103 and 106", weights[:2])
+	}
+	if weights[2] != 100 {
+		t.Fatalf("empty sect recruit weight = %v, want 100", weights[2])
 	}
 }
 
