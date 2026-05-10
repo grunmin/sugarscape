@@ -84,7 +84,7 @@ func TestBreakthroughCooldownDoublesByRealm(t *testing.T) {
 }
 
 func TestDefaultRealmBreakthroughProbabilitiesMatchStrategy(t *testing.T) {
-	want := []float64{0.10, 0.05, 0.05, 0.05, 0}
+	want := []float64{0.10, 0.05, 0.03, 0.02, 0}
 	for i, prob := range want {
 		if got := DefaultRealms[i].BreakthroughBase; got != prob {
 			t.Fatalf("realm %d breakthrough probability = %v, want %v", i+1, got, prob)

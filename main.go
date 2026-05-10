@@ -69,7 +69,7 @@ func main() {
 			world.Stats.Snapshot(world.Curr, world.Curr.Env, world.Clock.Tick, world.Clock.Year())
 		}
 
-		if time.Since(lastPrint) >= 5*time.Second {
+		if time.Since(lastPrint) >= 10*time.Second {
 			printTickStats(world, startTime, pausedDuration, tracker)
 			lastPrint = time.Now()
 		}
