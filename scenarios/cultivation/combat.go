@@ -51,13 +51,7 @@ func (s *CombatSystem) Tick(w *engine.World) {
 		cpWin := agents.Attrs[winner].Num["combat_power"]
 		cpLose := agents.Attrs[loser].Num["combat_power"]
 
-		// Winner also pays a combat cost.
-		maxCP := math.Max(cpWin, cpLose)
-		cpRatio := 0.0
-		if maxCP > 0 {
-			cpRatio = math.Min(cpWin, cpLose) / maxCP
-		}
-		cost := agents.Attrs[winner].Num["qi"] * cfg.CombatCostBase * cpRatio
+		cost := combatCost(cfg, agents.Attrs[loser].Num["qi"])
 		agents.Attrs[winner].Num["qi"] -= cost
 		if agents.Attrs[winner].Num["qi"] < 0 {
 			agents.Attrs[winner].Num["qi"] = 0
@@ -115,6 +109,13 @@ func addSpirit(env *engine.Grid, x, y int, amount float64) {
 	}
 	idx := y*env.Width + x
 	env.Cells[idx].Env0 += amount
+}
+
+func combatCost(cfg ScenarioConfig, opponentQi float64) float64 {
+	if opponentQi <= 0 {
+		return 0
+	}
+	return opponentQi * cfg.CombatCostBase
 }
 
 func effectiveCombatDeathChance(cfg ScenarioConfig, winnerCP, loserCP float64, loserRealm int) float64 {

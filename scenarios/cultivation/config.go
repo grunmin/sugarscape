@@ -43,7 +43,7 @@ type ScenarioConfig struct {
 	BreakthroughCD     int // ticks of cooldown after failed breakthrough
 	// Combat
 	CombatDeathChance float64
-	CombatCostBase    float64 // fraction of winner's qi lost in combat
+	CombatCostBase    float64 // fraction of opponent qi paid by winner in combat
 	FleeThreshold     float64
 }
 
@@ -65,7 +65,7 @@ func DefaultScenarioConfig() ScenarioConfig {
 		BreakthroughQiFrac:   0.9,
 		BreakthroughCD:       20,
 		CombatDeathChance:    0.3,
-		CombatCostBase:       0.025,
+		CombatCostBase:       0.20,
 		FleeThreshold:        3.0,
 	}
 }

@@ -88,13 +88,13 @@ func (s *InteractionSystem) resolveInteraction(w *engine.World, i, j int) Pendin
 		cpI := agents.Attrs[i].Num["combat_power"]
 		cpJ := agents.Attrs[j].Num["combat_power"]
 		if cpJ > 0 && cpI/cpJ > cfg.FleeThreshold {
-			if w.RNG.Float64() < qiFraction(agents.Attrs[i])*expectedCombatLossFactor(cpI, cpJ, cfg) {
+			if w.RNG.Float64() < qiFraction(agents.Attrs[i])*conservationFactor(agents.Attrs[i])*expectedCombatLossFactor(cpI, cpJ, cfg) {
 				return PendingFight{Attacker: i, Defender: j}
 			}
 			return PendingFight{}
 		}
 		if cpI > 0 && cpJ/cpI > cfg.FleeThreshold {
-			if w.RNG.Float64() < qiFraction(agents.Attrs[j])*expectedCombatLossFactor(cpJ, cpI, cfg) {
+			if w.RNG.Float64() < qiFraction(agents.Attrs[j])*conservationFactor(agents.Attrs[j])*expectedCombatLossFactor(cpJ, cpI, cfg) {
 				return PendingFight{Attacker: j, Defender: i}
 			}
 			return PendingFight{}
@@ -129,7 +129,15 @@ func attackDesire(attacker, defender engine.AttrBag) float64 {
 		sign = -1.0
 	}
 	lossFactor := expectedCombatLossFactor(selfCP, enemyCP, cfg)
-	return aggression * sign * math.Sqrt(math.Abs(cpDiffNorm)) * qiFraction(attacker) * lossFactor
+	return aggression * sign * math.Sqrt(math.Abs(cpDiffNorm)) * qiFraction(attacker) * conservationFactor(attacker) * lossFactor
+}
+
+func conservationFactor(attrs engine.AttrBag) float64 {
+	frac := qiFraction(attrs)
+	if frac >= 0.8 {
+		return 1
+	}
+	return frac / 0.8
 }
 
 func expectedCombatLossFactor(attackerCP, defenderCP float64, cfg ScenarioConfig) float64 {
@@ -137,13 +145,8 @@ func expectedCombatLossFactor(attackerCP, defenderCP float64, cfg ScenarioConfig
 	if total <= 0 {
 		return 1
 	}
-	maxCP := math.Max(attackerCP, defenderCP)
-	if maxCP <= 0 {
-		return 1
-	}
 	winProb := attackerCP / total
-	cpRatio := math.Min(attackerCP, defenderCP) / maxCP
-	expectedLossFrac := winProb*cfg.CombatCostBase*cpRatio + (1-winProb)*0.5
+	expectedLossFrac := winProb*cfg.CombatCostBase + (1-winProb)*0.5
 	if expectedLossFrac < 0 {
 		return 1
 	}

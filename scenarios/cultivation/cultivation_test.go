@@ -230,6 +230,15 @@ func TestEffectiveCombatDeathChanceScalesByAdvantageAndRealm(t *testing.T) {
 	}
 }
 
+func TestCombatCostUsesOpponentQi(t *testing.T) {
+	cfg := DefaultScenarioConfig()
+	got := combatCost(cfg, 100)
+	want := 100 * cfg.CombatCostBase
+	if math.Abs(got-want) > 1e-9 {
+		t.Fatalf("combat cost = %v, want %v", got, want)
+	}
+}
+
 func TestStrongerSecondCultivatorAttacksOnFleeThreshold(t *testing.T) {
 	cfg := engine.DefaultEngineConfig()
 	cfg.GridWidth = 3
@@ -303,7 +312,7 @@ func TestAttackDesireScalesWithQi(t *testing.T) {
 	defender.Num["combat_power"] = 25
 
 	got := attackDesire(attacker, defender)
-	want := 0.5 * math.Sqrt(0.75) * 0.895
+	want := 0.5 * math.Sqrt(0.75) * 0.625 * 0.74
 	if math.Abs(got-want) > 1e-12 {
 		t.Fatalf("attack desire = %v, want %v", got, want)
 	}
@@ -338,6 +347,26 @@ func TestMovementProbabilityScalesWithCellSpirit(t *testing.T) {
 	env.SetEnv0(0, 0, 0)
 	if got := movementProbability(env, 0, 0); got != 1 {
 		t.Fatalf("movement probability at zero spirit = %v, want 1", got)
+	}
+}
+
+func TestLowQiCultivatorMovesLessUnlessCellSpiritIsPoor(t *testing.T) {
+	env := engine.NewGrid(1, 1)
+	env.SetEnv1(0, 0, 100)
+	attrs := engine.NewAttrBag()
+	attrs.Num["qi"] = 40
+	attrs.Num["qi_max"] = 100
+
+	env.SetEnv0(0, 0, 50)
+	got := movementProbabilityForCultivator(env, 0, 0, attrs)
+	want := 0.5 * 0.5
+	if math.Abs(got-want) > 1e-12 {
+		t.Fatalf("movement probability for low qi in adequate cell = %v, want %v", got, want)
+	}
+
+	env.SetEnv0(0, 0, 20)
+	if got := movementProbabilityForCultivator(env, 0, 0, attrs); got != 0.8 {
+		t.Fatalf("movement probability for low qi in poor cell = %v, want 0.8", got)
 	}
 }
 

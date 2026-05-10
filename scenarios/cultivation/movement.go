@@ -75,45 +75,40 @@ func moveCultivator(
 	result := moveResult{valid: true, x: xSnapshot[i], y: ySnapshot[i]}
 	for range steps {
 		x, y := result.x, result.y
-		if rng.Float64() >= movementProbability(env, x, y) {
+		lowQi := qiFraction(agents.Attrs[i]) < 0.8
+		poorCell := cellSpiritFraction(env, x, y) < 0.25
+		if rng.Float64() >= movementProbabilityForCultivator(env, x, y, agents.Attrs[i]) {
 			continue
 		}
 
 		startX, startY := x, y
-		if chaseX, chaseY, ok := chaseTargetPosition(rng, agents, spatial, i, x, y, gridW, gridH, rc.DetectRange, xSnapshot, ySnapshot, aliveSnapshot); ok {
-			result.x, result.y = chaseX, chaseY
-			if chaseX != startX || chaseY != startY {
+		if !(lowQi && poorCell) {
+			if chaseX, chaseY, ok := chaseTargetPosition(rng, agents, spatial, i, x, y, gridW, gridH, rc.DetectRange, xSnapshot, ySnapshot, aliveSnapshot); ok {
+				result.x, result.y = chaseX, chaseY
+				if chaseX != startX || chaseY != startY {
+					result.moved = true
+				}
+				continue
+			}
+		}
+
+		spiritX, spiritY, foundBetterSpirit := bestAdjacentSpiritPosition(env, x, y, gridW, gridH)
+		if lowQi && poorCell && foundBetterSpirit {
+			result.x, result.y = spiritX, spiritY
+			if spiritX != startX || spiritY != startY {
 				result.moved = true
 			}
 			continue
 		}
 
-		bestX, bestY := x, y
-		bestSpirit := env.Env0(x, y)
-
-		for dy := -1; dy <= 1; dy++ {
-			for dx := -1; dx <= 1; dx++ {
-				if dx == 0 && dy == 0 {
-					continue
-				}
-				nx := (x + dx + gridW) % gridW
-				ny := (y + dy + gridH) % gridH
-				sp := env.Env0(nx, ny)
-				if sp > bestSpirit {
-					bestX, bestY = nx, ny
-					bestSpirit = sp
-				}
-			}
-		}
-
 		targetX, targetY := x, y
 		roll := rng.Float64()
 		if roll < 0.7 {
-			targetX, targetY = bestX, bestY
+			targetX, targetY = spiritX, spiritY
 		} else if roll < 0.8 {
 			targetX, targetY = randomAdjacentPosition(rng, x, y, gridW, gridH)
 		}
-		if targetX == x && targetY == y && bestX == x && bestY == y {
+		if targetX == x && targetY == y && spiritX == x && spiritY == y {
 			targetX, targetY = randomAdjacentPosition(rng, x, y, gridW, gridH)
 		}
 
@@ -126,13 +121,37 @@ func moveCultivator(
 	return result
 }
 
-func movementProbability(env *engine.Grid, x, y int) float64 {
-	spirit := env.Env0(x, y)
-	maxSpirit := env.Env1(x, y)
-	if maxSpirit <= 0 {
-		return 1
+func bestAdjacentSpiritPosition(env *engine.Grid, x, y, gridW, gridH int) (int, int, bool) {
+	bestX, bestY := x, y
+	bestSpirit := env.Env0(x, y)
+
+	for dy := -1; dy <= 1; dy++ {
+		for dx := -1; dx <= 1; dx++ {
+			if dx == 0 && dy == 0 {
+				continue
+			}
+			nx := (x + dx + gridW) % gridW
+			ny := (y + dy + gridH) % gridH
+			sp := env.Env0(nx, ny)
+			if sp > bestSpirit {
+				bestX, bestY = nx, ny
+				bestSpirit = sp
+			}
+		}
 	}
-	prob := 1 - spirit/maxSpirit
+	return bestX, bestY, bestX != x || bestY != y
+}
+
+func movementProbabilityForCultivator(env *engine.Grid, x, y int, attrs engine.AttrBag) float64 {
+	base := movementProbability(env, x, y)
+	if qiFraction(attrs) >= 0.8 || cellSpiritFraction(env, x, y) < 0.25 {
+		return base
+	}
+	return base * conservationFactor(attrs)
+}
+
+func movementProbability(env *engine.Grid, x, y int) float64 {
+	prob := 1 - cellSpiritFraction(env, x, y)
 	if prob < 0 {
 		return 0
 	}
@@ -140,6 +159,22 @@ func movementProbability(env *engine.Grid, x, y int) float64 {
 		return 1
 	}
 	return prob
+}
+
+func cellSpiritFraction(env *engine.Grid, x, y int) float64 {
+	spirit := env.Env0(x, y)
+	maxSpirit := env.Env1(x, y)
+	if maxSpirit <= 0 {
+		return 0
+	}
+	frac := spirit / maxSpirit
+	if frac < 0 {
+		return 0
+	}
+	if frac > 1 {
+		return 1
+	}
+	return frac
 }
 
 func chaseTargetPosition(
