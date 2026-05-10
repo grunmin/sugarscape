@@ -31,9 +31,12 @@ func (s *EnvironmentSystem) Tick(w *engine.World) {
 			if regen == 0 {
 				regen = cfg.SpiritRegenRate
 			}
-			next := current + regen
-			if next > maxVal {
-				next = maxVal
+			next := current
+			if current < maxVal {
+				next = current + regen
+				if next > maxVal {
+					next = maxVal
+				}
 			}
 			env.Cells[i].Env0 = next
 		}
@@ -62,13 +65,6 @@ func (s *EnvironmentSystem) Tick(w *engine.World) {
 						ni := ny*env.Width + nx
 						newVal += s.base[ni] * diffusionRate / 8.0
 					}
-				}
-				maxVal := env.Cells[i].Env1
-				if maxVal == 0 {
-					maxVal = cfg.SpiritMax
-				}
-				if newVal > maxVal {
-					newVal = maxVal
 				}
 				env.Cells[i].Env0 = newVal
 			}

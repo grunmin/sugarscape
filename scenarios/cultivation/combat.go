@@ -64,7 +64,8 @@ func (s *CombatSystem) Tick(w *engine.World) {
 		}
 		updateCombatPower(&agents.Attrs[winner], cfg)
 
-		if w.RNG.Float64() < cfg.CombatDeathChance {
+		deathChance := effectiveCombatDeathChance(cfg, cpWin, cpLose, int(agents.Attrs[loser].Num["realm"]))
+		if w.RNG.Float64() < deathChance {
 			loserX, loserY := agents.X[loser], agents.Y[loser]
 			loserQi := agents.Attrs[loser].Num["qi"]
 			loserRealm := int(agents.Attrs[loser].Num["realm"])
@@ -114,4 +115,40 @@ func addSpirit(env *engine.Grid, x, y int, amount float64) {
 	}
 	idx := y*env.Width + x
 	env.Cells[idx].Env0 += amount
+}
+
+func effectiveCombatDeathChance(cfg ScenarioConfig, winnerCP, loserCP float64, loserRealm int) float64 {
+	maxCP := math.Max(winnerCP, loserCP)
+	if maxCP <= 0 {
+		return 0
+	}
+
+	advantage := (winnerCP - loserCP) / maxCP
+	if advantage < 0.05 {
+		advantage = 0.05
+	}
+
+	chance := cfg.CombatDeathChance * advantage * realmDeathFactor(loserRealm)
+	if chance < 0 {
+		return 0
+	}
+	if chance > cfg.CombatDeathChance {
+		return cfg.CombatDeathChance
+	}
+	return chance
+}
+
+func realmDeathFactor(realm int) float64 {
+	switch {
+	case realm >= 5:
+		return 0.15
+	case realm == 4:
+		return 0.35
+	case realm == 3:
+		return 0.65
+	case realm == 2:
+		return 0.85
+	default:
+		return 1
+	}
 }

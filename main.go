@@ -7,10 +7,13 @@ import (
 	"sort"
 	"syscall"
 	"time"
+	"unsafe"
 
 	"github.com/runmin/sugarscape/engine"
 	"github.com/runmin/sugarscape/scenarios/cultivation"
 )
+
+const autoPauseEvery = 5 * time.Minute
 
 func main() {
 	cfg := engine.DefaultEngineConfig()
@@ -33,10 +36,13 @@ func main() {
 	snapshotEvery := 20
 	startTime := time.Now()
 	lastPrint := time.Now()
+	lastPause := time.Now()
+	pausedDuration := time.Duration(0)
 	interrupts := make(chan os.Signal, 1)
 	signal.Notify(interrupts, os.Interrupt, syscall.SIGTERM)
 	defer signal.Stop(interrupts)
 	interrupted := false
+	quitRequested := false
 
 	fmt.Printf("%-6s %-6s %-8s %-12s %-8s %-8s %-8s %-8s %-8s %-10s\n",
 		"tick", "year", "cultiv", "mortals", "练气", "筑基", "金丹", "元婴", "化神", "elapsed")
@@ -59,15 +65,34 @@ func main() {
 		}
 
 		if time.Since(lastPrint) >= 5*time.Second {
-			printTickStats(world, startTime)
+			printTickStats(world, startTime, pausedDuration)
 			lastPrint = time.Now()
+		}
+
+		if time.Since(lastPause) >= autoPauseEvery {
+			printTickStats(world, startTime, pausedDuration)
+			quit, interruptedBySignal, pausedFor := autoPause(world, interrupts)
+			pausedDuration += pausedFor
+			lastPause = time.Now()
+			lastPrint = time.Now()
+			if interruptedBySignal {
+				interrupted = true
+				break
+			}
+			if quit {
+				quitRequested = true
+				break
+			}
 		}
 	}
 
-	elapsed := time.Since(startTime)
+	elapsed := time.Since(startTime) - pausedDuration
 	fmt.Println()
 	if interrupted {
 		fmt.Printf("收到中断信号，已在 tick %d 正常退出。\n", world.Clock.Tick)
+	}
+	if quitRequested {
+		fmt.Printf("收到退出键，已在 tick %d 正常退出。\n", world.Clock.Tick)
 	}
 	ticksRun := world.Clock.Tick
 	msPerTick := 0.0
@@ -98,7 +123,7 @@ func main() {
 	printFinalSummary(world)
 }
 
-func printTickStats(w *engine.World, startTime time.Time) {
+func printTickStats(w *engine.World, startTime time.Time, pausedDuration time.Duration) {
 	agents := w.Curr.Agents
 	realms := map[int]int{1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
 	total := 0
@@ -118,11 +143,118 @@ func printTickStats(w *engine.World, startTime time.Time) {
 		realms[r]++
 	}
 
-	elapsed := time.Since(startTime).Round(time.Second)
+	elapsed := (time.Since(startTime) - pausedDuration).Round(time.Second)
 	fmt.Printf("%-6d %-6.0f %-8d %-12.0f %-8d %-8d %-8d %-8d %-8d %-10s\n",
 		w.Clock.Tick, w.Clock.Year(), total, w.Curr.Env.TotalMortals(),
 		realms[1], realms[2], realms[3], realms[4], realms[5], elapsed)
 	printNotableEvents(w.Stats.DrainNotableEvents())
+}
+
+func autoPause(w *engine.World, interrupts <-chan os.Signal) (quit bool, interrupted bool, pausedFor time.Duration) {
+	start := time.Now()
+	fmt.Printf("\n自动暂停: tick=%d year=%.1f。按任意键继续，按 q 退出。\n", w.Clock.Tick, w.Clock.Year())
+
+	key, interrupted, err := readPauseKey(interrupts)
+	if interrupted {
+		return false, true, time.Since(start)
+	}
+	if err != nil {
+		fmt.Printf("读取按键失败: %v。继续模拟。\n", err)
+		return false, false, time.Since(start)
+	}
+	if key == 'q' || key == 'Q' {
+		return true, false, time.Since(start)
+	}
+	fmt.Println("继续模拟。")
+	return false, false, time.Since(start)
+}
+
+func readPauseKey(interrupts <-chan os.Signal) (byte, bool, error) {
+	fd := int(os.Stdin.Fd())
+	if isTerminal(os.Stdin) {
+		restore, err := enableRawInput(fd, false)
+		if err != nil {
+			return 0, false, err
+		}
+		defer restore()
+
+		buf := []byte{0}
+		for {
+			select {
+			case <-interrupts:
+				return 0, true, nil
+			default:
+			}
+			n, err := os.Stdin.Read(buf)
+			if err != nil {
+				if err == syscall.EINTR || err == syscall.EAGAIN {
+					continue
+				}
+				return 0, false, err
+			}
+			if n > 0 {
+				return buf[0], false, nil
+			}
+		}
+	}
+
+	keyCh := make(chan byte, 1)
+	errCh := make(chan error, 1)
+	go func() {
+		buf := []byte{0}
+		if _, err := os.Stdin.Read(buf); err != nil {
+			errCh <- err
+			return
+		}
+		keyCh <- buf[0]
+	}()
+	select {
+	case <-interrupts:
+		return 0, true, nil
+	case err := <-errCh:
+		return 0, false, err
+	case key := <-keyCh:
+		return key, false, nil
+	}
+}
+
+func isTerminal(f *os.File) bool {
+	info, err := f.Stat()
+	if err != nil {
+		return false
+	}
+	return info.Mode()&os.ModeCharDevice != 0
+}
+
+func enableRawInput(fd int, blocking bool) (func(), error) {
+	var oldState syscall.Termios
+	if err := ioctlTermios(fd, syscall.TIOCGETA, &oldState); err != nil {
+		return nil, err
+	}
+	newState := oldState
+	newState.Lflag &^= syscall.ICANON | syscall.ECHO
+	if blocking {
+		newState.Cc[syscall.VMIN] = 1
+		newState.Cc[syscall.VTIME] = 0
+	} else {
+		newState.Cc[syscall.VMIN] = 0
+		newState.Cc[syscall.VTIME] = 1
+	}
+	if err := ioctlTermios(fd, syscall.TIOCSETA, &newState); err != nil {
+		return nil, err
+	}
+	return func() {
+		_ = ioctlTermios(fd, syscall.TIOCSETA, &oldState)
+		fmt.Println()
+	}, nil
+}
+
+func ioctlTermios(fd int, req uint, termios *syscall.Termios) error {
+	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(fd), uintptr(req), uintptr(unsafe.Pointer(termios)))
+	if errno != 0 {
+		return errno
+	}
+	return nil
 }
 
 func printNotableEvents(events []engine.NotableEvent) {

@@ -83,6 +83,15 @@ func TestBreakthroughCooldownDoublesByRealm(t *testing.T) {
 	}
 }
 
+func TestDefaultRealmBreakthroughProbabilitiesMatchStrategy(t *testing.T) {
+	want := []float64{0.10, 0.05, 0.05, 0.05, 0}
+	for i, prob := range want {
+		if got := DefaultRealms[i].BreakthroughBase; got != prob {
+			t.Fatalf("realm %d breakthrough probability = %v, want %v", i+1, got, prob)
+		}
+	}
+}
+
 func TestBreakthroughToHuashenRecordsBirthReason(t *testing.T) {
 	oldBreakthrough := DefaultRealms[3].BreakthroughBase
 	DefaultRealms[3].BreakthroughBase = 1.0
@@ -199,6 +208,28 @@ func TestYuanyingNaturalDeathRecordsReason(t *testing.T) {
 	}
 }
 
+func TestEffectiveCombatDeathChanceScalesByAdvantageAndRealm(t *testing.T) {
+	cfg := DefaultScenarioConfig()
+
+	got := effectiveCombatDeathChance(cfg, 1000, 250, 4)
+	want := cfg.CombatDeathChance * 0.75 * 0.35
+	if math.Abs(got-want) > 1e-12 {
+		t.Fatalf("yuanying death chance = %v, want %v", got, want)
+	}
+
+	upset := effectiveCombatDeathChance(cfg, 250, 1000, 4)
+	wantUpset := cfg.CombatDeathChance * 0.05 * 0.35
+	if math.Abs(upset-wantUpset) > 1e-12 {
+		t.Fatalf("yuanying upset death chance = %v, want %v", upset, wantUpset)
+	}
+
+	huashen := effectiveCombatDeathChance(cfg, 1000, 250, 5)
+	wantHuashen := cfg.CombatDeathChance * 0.75 * 0.15
+	if math.Abs(huashen-wantHuashen) > 1e-12 {
+		t.Fatalf("huashen death chance = %v, want %v", huashen, wantHuashen)
+	}
+}
+
 func TestStrongerSecondCultivatorAttacksOnFleeThreshold(t *testing.T) {
 	cfg := engine.DefaultEngineConfig()
 	cfg.GridWidth = 3
@@ -295,6 +326,50 @@ func TestMovementProbabilityScalesWithCellSpirit(t *testing.T) {
 	env.SetEnv0(0, 0, 0)
 	if got := movementProbability(env, 0, 0); got != 1 {
 		t.Fatalf("movement probability at zero spirit = %v, want 1", got)
+	}
+}
+
+func TestEnvironmentKeepsReturnedQiAboveSpiritMax(t *testing.T) {
+	cfg := engine.DefaultEngineConfig()
+	cfg.GridWidth = 3
+	cfg.GridHeight = 3
+	cfg.NumWorkers = 1
+
+	w := engine.NewWorld(cfg)
+	for i := range w.Next.Env.Cells {
+		w.Next.Env.Cells[i].Env0 = 0
+		w.Next.Env.Cells[i].Env1 = 100
+		w.Next.Env.Cells[i].Env2 = 0
+	}
+	w.Next.Env.SetEnv0(1, 1, 200)
+
+	(&EnvironmentSystem{}).Tick(w)
+
+	center := w.Next.Env.Env0(1, 1)
+	if center <= 100 {
+		t.Fatalf("center spirit after diffusion = %v, want above spirit_max", center)
+	}
+	neighbor := w.Next.Env.Env0(0, 0)
+	if neighbor <= 0 {
+		t.Fatalf("neighbor spirit after diffusion = %v, want returned qi to diffuse outward", neighbor)
+	}
+}
+
+func TestEnvironmentRegenStillClampsBelowMax(t *testing.T) {
+	cfg := engine.DefaultEngineConfig()
+	cfg.GridWidth = 1
+	cfg.GridHeight = 1
+	cfg.NumWorkers = 1
+
+	w := engine.NewWorld(cfg)
+	w.Next.Env.SetEnv0(0, 0, 99)
+	w.Next.Env.SetEnv1(0, 0, 100)
+	w.Next.Env.SetEnv2(0, 0, 5)
+
+	(&EnvironmentSystem{}).Tick(w)
+
+	if got := w.Next.Env.Env0(0, 0); got != 100 {
+		t.Fatalf("spirit after regen = %v, want clamped to spirit_max", got)
 	}
 }
 
