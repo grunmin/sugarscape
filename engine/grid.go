@@ -162,3 +162,11 @@ func (g *Grid) CloneEnv() *Grid {
 func (g *Grid) TotalMortals() float64 {
 	return g.MortalTotal
 }
+
+func (g *Grid) TotalSpirit() float64 {
+	total := 0.0
+	for i := range g.Cells {
+		total += g.Cells[i].Env0
+	}
+	return total
+}

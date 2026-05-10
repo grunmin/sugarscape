@@ -232,10 +232,19 @@ func TestEffectiveCombatDeathChanceScalesByAdvantageAndRealm(t *testing.T) {
 
 func TestCombatCostUsesOpponentQi(t *testing.T) {
 	cfg := DefaultScenarioConfig()
-	got := combatCost(cfg, 100)
-	want := 100 * cfg.CombatCostBase
+	got := combatCost(cfg, 1000, 100)
+	want := 100*cfg.CombatCostBase + 1000*cfg.CombatSelfMinCost
 	if math.Abs(got-want) > 1e-9 {
 		t.Fatalf("combat cost = %v, want %v", got, want)
+	}
+}
+
+func TestReturnedDeathQiLosesFixedFraction(t *testing.T) {
+	cfg := DefaultScenarioConfig()
+	got := returnedDeathQi(cfg, 100, 30)
+	want := 50.0
+	if math.Abs(got-want) > 1e-12 {
+		t.Fatalf("returned death qi = %v, want %v", got, want)
 	}
 }
 
@@ -310,9 +319,10 @@ func TestAttackDesireScalesWithQi(t *testing.T) {
 	attacker.Num["qi_max"] = 100
 	defender := engine.NewAttrBag()
 	defender.Num["combat_power"] = 25
+	defender.Num["qi"] = 25
 
 	got := attackDesire(attacker, defender)
-	want := 0.5 * math.Sqrt(0.75) * 0.625 * 0.74
+	want := 0.5 * math.Sqrt(0.75) * 0.625 * 0.804
 	if math.Abs(got-want) > 1e-12 {
 		t.Fatalf("attack desire = %v, want %v", got, want)
 	}
@@ -321,12 +331,32 @@ func TestAttackDesireScalesWithQi(t *testing.T) {
 func TestExpectedCombatLossFactorPenalizesRiskyFights(t *testing.T) {
 	cfg := DefaultScenarioConfig()
 
-	favorable := expectedCombatLossFactor(100, 25, cfg)
-	even := expectedCombatLossFactor(100, 100, cfg)
-	unfavorable := expectedCombatLossFactor(25, 100, cfg)
+	favorable := combatLossFactorForTest(100, 100, 25, 25, cfg)
+	even := combatLossFactorForTest(100, 100, 100, 100, cfg)
+	unfavorable := combatLossFactorForTest(25, 25, 100, 100, cfg)
 
 	if !(favorable > even && even > unfavorable) {
 		t.Fatalf("loss factors favorable=%v even=%v unfavorable=%v, want descending by risk", favorable, even, unfavorable)
+	}
+}
+
+func combatLossFactorForTest(attackerCP, attackerQi, defenderCP, defenderQi float64, cfg ScenarioConfig) float64 {
+	attacker := engine.NewAttrBag()
+	attacker.Num["combat_power"] = attackerCP
+	attacker.Num["qi"] = attackerQi
+	defender := engine.NewAttrBag()
+	defender.Num["combat_power"] = defenderCP
+	defender.Num["qi"] = defenderQi
+	return expectedCombatLossFactor(attacker, defender, cfg)
+}
+
+func TestConversionSpiritFactors(t *testing.T) {
+	cfg := DefaultScenarioConfig()
+	if got := proportionalFactor(10, 20); got != 0.5 {
+		t.Fatalf("global proportional factor = %v, want 0.5", got)
+	}
+	if got := conversionLocalSpiritFactor(5, cfg); got != 0.5 {
+		t.Fatalf("local conversion factor = %v, want 0.5", got)
 	}
 }
 
@@ -512,8 +542,9 @@ func TestNaturalDeathReturnsQiToWorld(t *testing.T) {
 	if w.Next.Agents.Alive[0] {
 		t.Fatal("cultivator is alive, want natural death")
 	}
-	if got := w.Next.Env.Env0(1, 1); got != before+123 {
-		t.Fatalf("cell spirit = %v, want %v", got, before+123)
+	want := before + 123*(1-DefaultScenarioConfig().DeathQiLossFrac)
+	if got := w.Next.Env.Env0(1, 1); math.Abs(got-want) > 1e-12 {
+		t.Fatalf("cell spirit = %v, want %v", got, want)
 	}
 }
 
@@ -565,8 +596,9 @@ func TestLowSpiritExposureCanKillCultivator(t *testing.T) {
 	if w.Next.Agents.Alive[0] {
 		t.Fatal("cultivator survived repeated low-spirit death checks, want eventual death")
 	}
-	if got := w.Next.Env.Env0(0, 0); got < 123 {
-		t.Fatalf("cell spirit after low-spirit death = %v, want at least 123", got)
+	want := 123 * (1 - DefaultScenarioConfig().DeathQiLossFrac)
+	if got := w.Next.Env.Env0(0, 0); got < want {
+		t.Fatalf("cell spirit after low-spirit death = %v, want at least %v", got, want)
 	}
 }
 

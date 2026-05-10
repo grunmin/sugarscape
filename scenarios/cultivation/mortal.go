@@ -4,7 +4,9 @@ import "github.com/runmin/sugarscape/engine"
 
 // MortalSystem handles mortal population dynamics and conversion to cultivators.
 type MortalSystem struct {
-	maxMortalPop float64
+	maxMortalPop              float64
+	globalSpiritFactor        float64
+	lastGlobalSpiritCheckTick int64
 }
 
 func (s *MortalSystem) Name() string  { return "MortalSystem" }
@@ -24,6 +26,7 @@ func (s *MortalSystem) Tick(w *engine.World) {
 	if s.maxMortalPop <= 0 {
 		s.maxMortalPop = maxMortalPop(env)
 	}
+	globalFactor := s.conversionGlobalSpiritFactor(w, cfg)
 
 	expectedDeaths := pop * ratePerTick
 	actualDeaths := expectedDeaths * (0.8 + rng.Float64()*0.4)
@@ -31,7 +34,7 @@ func (s *MortalSystem) Tick(w *engine.World) {
 	actualBirths := pop * ratePerTick * birthMult
 	env.AddMortalTotal(actualBirths - actualDeaths)
 
-	expectedConvs := env.TotalMortals() * convPerTick
+	expectedConvs := env.TotalMortals() * convPerTick * globalFactor
 	convs := int(expectedConvs)
 	fracPart := expectedConvs - float64(convs)
 	if rng.Float64() < fracPart {
@@ -46,6 +49,9 @@ func (s *MortalSystem) Tick(w *engine.World) {
 		if env.Mortal(sr.x, sr.y) <= 0 {
 			continue
 		}
+		if rng.Float64() >= conversionLocalSpiritFactor(env.Env0(sr.x, sr.y), cfg) {
+			continue
+		}
 		if env.AddMortal(sr.x, sr.y, -1) <= 0 {
 			env.SetMortal(sr.x, sr.y, 0)
 		}
@@ -55,6 +61,37 @@ func (s *MortalSystem) Tick(w *engine.World) {
 }
 
 type spawnReq struct{ x, y int }
+
+func (s *MortalSystem) conversionGlobalSpiritFactor(w *engine.World, cfg ScenarioConfig) float64 {
+	interval := cfg.ConversionSpiritCheckEvery
+	if interval < 1 {
+		interval = 1
+	}
+	if s.globalSpiritFactor == 0 || w.Clock.Tick-s.lastGlobalSpiritCheckTick >= int64(interval) {
+		threshold := cfg.ConversionGlobalSpiritThresholdAvg * float64(len(w.Next.Env.Cells))
+		s.globalSpiritFactor = proportionalFactor(w.Next.Env.TotalSpirit(), threshold)
+		s.lastGlobalSpiritCheckTick = w.Clock.Tick
+	}
+	return s.globalSpiritFactor
+}
+
+func conversionLocalSpiritFactor(spirit float64, cfg ScenarioConfig) float64 {
+	return proportionalFactor(spirit, cfg.ConversionLocalSpiritThreshold)
+}
+
+func proportionalFactor(value, threshold float64) float64 {
+	if threshold <= 0 {
+		return 1
+	}
+	factor := value / threshold
+	if factor < 0 {
+		return 0
+	}
+	if factor > 1 {
+		return 1
+	}
+	return factor
+}
 
 func maxMortalPop(env *engine.Grid) float64 {
 	maxPop := 0.0

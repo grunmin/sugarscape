@@ -51,7 +51,7 @@ func (s *CombatSystem) Tick(w *engine.World) {
 		cpWin := agents.Attrs[winner].Num["combat_power"]
 		cpLose := agents.Attrs[loser].Num["combat_power"]
 
-		cost := combatCost(cfg, agents.Attrs[loser].Num["qi"])
+		cost := combatCost(cfg, agents.Attrs[winner].Num["qi"], agents.Attrs[loser].Num["qi"])
 		agents.Attrs[winner].Num["qi"] -= cost
 		if agents.Attrs[winner].Num["qi"] < 0 {
 			agents.Attrs[winner].Num["qi"] = 0
@@ -88,7 +88,7 @@ func (s *CombatSystem) Tick(w *engine.World) {
 			}
 			absorbed := math.Min(qiGain, capacity)
 			agents.Attrs[winner].Num["qi"] += absorbed
-			addSpirit(env, loserX, loserY, loserQi-absorbed)
+			addSpirit(env, loserX, loserY, returnedDeathQi(cfg, loserQi, absorbed))
 			if agents.Attrs[winner].Num["qi"] > qiMax {
 				agents.Attrs[winner].Num["qi"] = qiMax
 			}
@@ -111,11 +111,27 @@ func addSpirit(env *engine.Grid, x, y int, amount float64) {
 	env.Cells[idx].Env0 += amount
 }
 
-func combatCost(cfg ScenarioConfig, opponentQi float64) float64 {
-	if opponentQi <= 0 {
+func combatCost(cfg ScenarioConfig, selfQi, opponentQi float64) float64 {
+	opponentCost := 0.0
+	if opponentQi > 0 {
+		opponentCost = opponentQi * cfg.CombatCostBase
+	}
+	selfCost := 0.0
+	if selfQi > 0 {
+		selfCost = selfQi * cfg.CombatSelfMinCost
+	}
+	return opponentCost + selfCost
+}
+
+func returnedDeathQi(cfg ScenarioConfig, deadQi, absorbedByKiller float64) float64 {
+	if deadQi <= 0 {
 		return 0
 	}
-	return opponentQi * cfg.CombatCostBase
+	returned := deadQi*(1-cfg.DeathQiLossFrac) - absorbedByKiller
+	if returned < 0 {
+		return 0
+	}
+	return returned
 }
 
 func effectiveCombatDeathChance(cfg ScenarioConfig, winnerCP, loserCP float64, loserRealm int) float64 {

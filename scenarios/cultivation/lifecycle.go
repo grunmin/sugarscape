@@ -13,6 +13,7 @@ func (s *LifecycleSystem) Name() string  { return "LifecycleSystem" }
 func (s *LifecycleSystem) Priority() int { return 7 }
 
 func (s *LifecycleSystem) Tick(w *engine.World) {
+	cfg := DefaultScenarioConfig()
 	agents := w.Next.Agents
 	env := w.Next.Env
 	ticksPerYear := float64(w.Config.TicksPerYear)
@@ -85,7 +86,7 @@ func (s *LifecycleSystem) Tick(w *engine.World) {
 
 	for _, d := range allDeaths {
 		if agents.Alive[d.idx] {
-			addSpirit(w.Next.Env, d.x, d.y, d.qi)
+			addSpirit(w.Next.Env, d.x, d.y, returnedDeathQi(cfg, d.qi, 0))
 			agents.Kill(d.idx)
 			w.Stats.RecordDeath()
 			if d.realm >= 4 {

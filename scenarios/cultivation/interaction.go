@@ -88,13 +88,13 @@ func (s *InteractionSystem) resolveInteraction(w *engine.World, i, j int) Pendin
 		cpI := agents.Attrs[i].Num["combat_power"]
 		cpJ := agents.Attrs[j].Num["combat_power"]
 		if cpJ > 0 && cpI/cpJ > cfg.FleeThreshold {
-			if w.RNG.Float64() < qiFraction(agents.Attrs[i])*conservationFactor(agents.Attrs[i])*expectedCombatLossFactor(cpI, cpJ, cfg) {
+			if w.RNG.Float64() < qiFraction(agents.Attrs[i])*conservationFactor(agents.Attrs[i])*expectedCombatLossFactor(agents.Attrs[i], agents.Attrs[j], cfg) {
 				return PendingFight{Attacker: i, Defender: j}
 			}
 			return PendingFight{}
 		}
 		if cpI > 0 && cpJ/cpI > cfg.FleeThreshold {
-			if w.RNG.Float64() < qiFraction(agents.Attrs[j])*conservationFactor(agents.Attrs[j])*expectedCombatLossFactor(cpJ, cpI, cfg) {
+			if w.RNG.Float64() < qiFraction(agents.Attrs[j])*conservationFactor(agents.Attrs[j])*expectedCombatLossFactor(agents.Attrs[j], agents.Attrs[i], cfg) {
 				return PendingFight{Attacker: j, Defender: i}
 			}
 			return PendingFight{}
@@ -128,7 +128,7 @@ func attackDesire(attacker, defender engine.AttrBag) float64 {
 	if cpDiffNorm < 0 {
 		sign = -1.0
 	}
-	lossFactor := expectedCombatLossFactor(selfCP, enemyCP, cfg)
+	lossFactor := expectedCombatLossFactor(attacker, defender, cfg)
 	return aggression * sign * math.Sqrt(math.Abs(cpDiffNorm)) * qiFraction(attacker) * conservationFactor(attacker) * lossFactor
 }
 
@@ -140,13 +140,22 @@ func conservationFactor(attrs engine.AttrBag) float64 {
 	return frac / 0.8
 }
 
-func expectedCombatLossFactor(attackerCP, defenderCP float64, cfg ScenarioConfig) float64 {
+func expectedCombatLossFactor(attacker, defender engine.AttrBag, cfg ScenarioConfig) float64 {
+	attackerCP := attacker.Num["combat_power"]
+	defenderCP := defender.Num["combat_power"]
 	total := attackerCP + defenderCP
 	if total <= 0 {
 		return 1
 	}
 	winProb := attackerCP / total
-	expectedLossFrac := winProb*cfg.CombatCostBase + (1-winProb)*0.5
+	selfQi := attacker.Num["qi"]
+	expectedCost := combatCost(cfg, selfQi, defender.Num["qi"])
+	expectedLossFrac := 0.0
+	if selfQi > 0 {
+		expectedLossFrac = winProb*expectedCost/selfQi + (1-winProb)*0.5
+	} else {
+		expectedLossFrac = 1
+	}
 	if expectedLossFrac < 0 {
 		return 1
 	}

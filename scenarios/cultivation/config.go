@@ -24,12 +24,15 @@ var DefaultRealms = []RealmConfig{
 // ScenarioConfig holds all configurable parameters for the cultivation world.
 type ScenarioConfig struct {
 	// Mortal world
-	MortalBaseDensity  float64 // average mortals per cell
-	NumTribes          int     // number of tribal centers
-	MortalLifespan     float64 // years
-	MortalConvChance   float64 // lifetime probability of becoming cultivator
-	MortalBirthRateMin float64 // multiplier on base mortality rate
-	MortalBirthRateMax float64 // multiplier on base mortality rate
+	MortalBaseDensity                  float64 // average mortals per cell
+	NumTribes                          int     // number of tribal centers
+	MortalLifespan                     float64 // years
+	MortalConvChance                   float64 // lifetime probability of becoming cultivator
+	MortalBirthRateMin                 float64 // multiplier on base mortality rate
+	MortalBirthRateMax                 float64 // multiplier on base mortality rate
+	ConversionGlobalSpiritThresholdAvg float64
+	ConversionLocalSpiritThreshold     float64
+	ConversionSpiritCheckEvery         int
 	// Spirit density
 	BaseSpiritDensity    float64
 	SpiritRegenRate      float64
@@ -44,29 +47,36 @@ type ScenarioConfig struct {
 	// Combat
 	CombatDeathChance float64
 	CombatCostBase    float64 // fraction of opponent qi paid by winner in combat
+	CombatSelfMinCost float64 // minimum fraction of winner qi paid in combat
+	DeathQiLossFrac   float64 // fraction of dead cultivator qi permanently lost
 	FleeThreshold     float64
 }
 
 func DefaultScenarioConfig() ScenarioConfig {
 	return ScenarioConfig{
-		MortalBaseDensity:    100,
-		NumTribes:            200,
-		MortalLifespan:       70,
-		MortalConvChance:     0.001,
-		MortalBirthRateMin:   0.9,
-		MortalBirthRateMax:   1.2,
-		BaseSpiritDensity:    30,
-		SpiritRegenRate:      0.05,
-		SpiritMax:            100,
-		NumSpiritSprings:     20,
-		EnvironmentTickEvery: 5,
-		BaseQi:               100,
-		CultivationSpeed:     0.5,
-		BreakthroughQiFrac:   0.9,
-		BreakthroughCD:       20,
-		CombatDeathChance:    0.3,
-		CombatCostBase:       0.20,
-		FleeThreshold:        3.0,
+		MortalBaseDensity:                  100,
+		NumTribes:                          200,
+		MortalLifespan:                     70,
+		MortalConvChance:                   0.001,
+		MortalBirthRateMin:                 0.9,
+		MortalBirthRateMax:                 1.2,
+		ConversionGlobalSpiritThresholdAvg: 20,
+		ConversionLocalSpiritThreshold:     10,
+		ConversionSpiritCheckEvery:         20,
+		BaseSpiritDensity:                  30,
+		SpiritRegenRate:                    0.05,
+		SpiritMax:                          100,
+		NumSpiritSprings:                   20,
+		EnvironmentTickEvery:               5,
+		BaseQi:                             100,
+		CultivationSpeed:                   0.5,
+		BreakthroughQiFrac:                 0.9,
+		BreakthroughCD:                     20,
+		CombatDeathChance:                  0.3,
+		CombatCostBase:                     0.20,
+		CombatSelfMinCost:                  0.02,
+		DeathQiLossFrac:                    0.20,
+		FleeThreshold:                      3.0,
 	}
 }
 
