@@ -83,7 +83,7 @@ func moveCultivator(
 
 		startX, startY := x, y
 		if !(lowQi && poorCell) {
-			if chaseX, chaseY, ok := chaseTargetPosition(rng, agents, spatial, i, x, y, gridW, gridH, rc.DetectRange, xSnapshot, ySnapshot, aliveSnapshot); ok {
+			if chaseX, chaseY, ok := chaseTargetPosition(rng, agents, env, spatial, i, x, y, gridW, gridH, rc.DetectRange, xSnapshot, ySnapshot, aliveSnapshot); ok {
 				result.x, result.y = chaseX, chaseY
 				if chaseX != startX || chaseY != startY {
 					result.moved = true
@@ -193,6 +193,7 @@ func cellSpiritFraction(env *engine.Grid, x, y int) float64 {
 func chaseTargetPosition(
 	rng *engine.RNG,
 	agents *engine.AgentStore,
+	env *engine.Grid,
 	spatial *engine.Grid,
 	i, x, y, gridW, gridH, detectRange int,
 	xSnapshot, ySnapshot []int,
@@ -220,7 +221,7 @@ func chaseTargetPosition(
 			continue
 		}
 
-		desire := attackDesire(agents.Attrs[i], agents.Attrs[j])
+		desire := attackDesireWithResource(agents.Attrs[i], agents.Attrs[j], cellSpiritFraction(env, x, y))
 		if desire <= 0.5 {
 			continue
 		}

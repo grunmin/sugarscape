@@ -961,6 +961,60 @@ func TestStationaryCultivatorAbsorbsSpirit(t *testing.T) {
 	}
 }
 
+func TestCultivatorAbsorbIsCappedByRemainingCapacity(t *testing.T) {
+	cfg := engine.DefaultEngineConfig()
+	cfg.GridWidth = 1
+	cfg.GridHeight = 1
+	cfg.NumWorkers = 1
+
+	w := engine.NewWorld(cfg)
+	w.Next.Env.SetEnv0(0, 0, 100)
+	w.Next.Env.SetEnv1(0, 0, 100)
+	attrs := engine.NewAttrBag()
+	attrs.Num["realm"] = 1
+	attrs.Num["qi"] = 199
+	attrs.Num["qi_max"] = 200
+	attrs.Num["cultivation_speed"] = 1
+	attrs.Num["moved_this_tick"] = 0
+	w.Next.Agents.Add("cultivator", 0, 0, attrs)
+
+	(&CultivationSystem{}).Tick(w)
+
+	if got := w.Next.Agents.Attrs[0].Num["qi"]; got != 200 {
+		t.Fatalf("cultivator qi = %v, want capped at 200", got)
+	}
+	if got := w.Next.Env.Env0(0, 0); got != 99 {
+		t.Fatalf("cell spirit = %v, want only remaining capacity consumed", got)
+	}
+}
+
+func TestFullQiCultivatorDoesNotDrainCellSpirit(t *testing.T) {
+	cfg := engine.DefaultEngineConfig()
+	cfg.GridWidth = 1
+	cfg.GridHeight = 1
+	cfg.NumWorkers = 1
+
+	w := engine.NewWorld(cfg)
+	w.Next.Env.SetEnv0(0, 0, 100)
+	w.Next.Env.SetEnv1(0, 0, 100)
+	attrs := engine.NewAttrBag()
+	attrs.Num["realm"] = 1
+	attrs.Num["qi"] = 200
+	attrs.Num["qi_max"] = 200
+	attrs.Num["cultivation_speed"] = 1
+	attrs.Num["moved_this_tick"] = 0
+	w.Next.Agents.Add("cultivator", 0, 0, attrs)
+
+	(&CultivationSystem{}).Tick(w)
+
+	if got := w.Next.Agents.Attrs[0].Num["qi"]; got != 200 {
+		t.Fatalf("cultivator qi = %v, want 200", got)
+	}
+	if got := w.Next.Env.Env0(0, 0); got != 100 {
+		t.Fatalf("cell spirit = %v, want unchanged for full cultivator", got)
+	}
+}
+
 func TestInteractionOnlyTriggersOnSameCell(t *testing.T) {
 	cfg := engine.DefaultEngineConfig()
 	cfg.GridWidth = 5

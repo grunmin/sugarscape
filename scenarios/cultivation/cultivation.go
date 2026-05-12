@@ -50,12 +50,18 @@ func (s *CultivationSystem) Tick(w *engine.World) {
 				realm = 1
 			}
 			rc := GetRealm(realm)
+			qiMax := cfg.BaseQi * rc.QiMultiplier
+			attrs.Num["qi_max"] = qiMax
 
 			if attrs.Num["breakthrough_cooldown"] > 0 {
 				attrs.Num["breakthrough_cooldown"]--
 			}
 
 			if attrs.Num["moved_this_tick"] != 1 {
+				capacity := qiMax - attrs.Num["qi"]
+				if capacity < 0 {
+					capacity = 0
+				}
 				x, y := agents.X[i], agents.Y[i]
 				cellIdx := y*gridW + x
 				cellLock := &s.cellLocks[cellIdx%len(s.cellLocks)]
@@ -66,14 +72,15 @@ func (s *CultivationSystem) Tick(w *engine.World) {
 				if absorb > spirit {
 					absorb = spirit
 				}
+				if absorb > capacity {
+					absorb = capacity
+				}
 				env.Cells[cellIdx].Env0 = spirit - absorb
 				cellLock.Unlock()
 
 				attrs.Num["qi"] += absorb
 			}
 
-			qiMax := cfg.BaseQi * rc.QiMultiplier
-			attrs.Num["qi_max"] = qiMax
 			if attrs.Num["qi"] > qiMax {
 				attrs.Num["qi"] = qiMax
 			}
