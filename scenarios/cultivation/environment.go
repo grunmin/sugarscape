@@ -56,7 +56,14 @@ func (s *EnvironmentSystem) Tick(w *engine.World) {
 	})
 
 	// Phase 2: Diffusion from a stable post-regeneration snapshot.
-	diffusionRate := 1 - math.Pow(0.95, float64(interval))
+	diffusionPerTick := cfg.SpiritDiffusionRate
+	if diffusionPerTick < 0 {
+		diffusionPerTick = 0
+	}
+	if diffusionPerTick > 1 {
+		diffusionPerTick = 1
+	}
+	diffusionRate := 1 - math.Pow(1-diffusionPerTick, float64(interval))
 	engine.ParaFor(len(env.Cells), func(start, end int) {
 		for i := start; i < end; i++ {
 			s.base[i] = env.Cells[i].Env0

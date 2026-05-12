@@ -149,7 +149,9 @@ func spawnCultivator(w *engine.World, x, y int, recruitWeights []float64) {
 	strategies := []string{"aggressive", "peaceful", "merchant", "hermit", "bandit"}
 	attrs.Str["strategy"] = strategies[rng.Intn(len(strategies))]
 	if rng.Float64() < cfg.SectMembershipChance {
-		attrs.Str["sect"] = weightedSectName(rng, recruitWeights)
+		sect := weightedSectName(rng, recruitWeights)
+		attrs.Str["sect"] = sect
+		attrs.Num["aggression"] = clampNorm(attrs.Num["aggression"]+sectTraitForName(sect).AggressionBias, 0, 1)
 	}
 
 	w.Next.Agents.Add("cultivator", x, y, attrs)
@@ -159,6 +161,25 @@ var (
 	sectNames   = []string{"宗门1", "宗门2", "宗门3", "宗门4", "宗门5", "宗门6", "宗门7"}
 	sectWeights []float64
 )
+
+// SectTrait defines a fixed sect identity that shapes long-run recruitment and growth.
+type SectTrait struct {
+	Style                  string
+	RecruitMultiplier      float64
+	PowerRecruitMultiplier float64
+	BreakthroughMultiplier float64
+	AggressionBias         float64
+}
+
+var sectTraits = []SectTrait{
+	{Style: "开山", RecruitMultiplier: 1.35, PowerRecruitMultiplier: 0.90, BreakthroughMultiplier: 0.95, AggressionBias: 0.02},
+	{Style: "战修", RecruitMultiplier: 0.85, PowerRecruitMultiplier: 1.30, BreakthroughMultiplier: 1.05, AggressionBias: 0.10},
+	{Style: "丹鼎", RecruitMultiplier: 1.00, PowerRecruitMultiplier: 1.05, BreakthroughMultiplier: 1.25, AggressionBias: -0.03},
+	{Style: "隐峰", RecruitMultiplier: 0.70, PowerRecruitMultiplier: 1.45, BreakthroughMultiplier: 1.15, AggressionBias: -0.08},
+	{Style: "外门", RecruitMultiplier: 1.55, PowerRecruitMultiplier: 0.80, BreakthroughMultiplier: 0.90, AggressionBias: 0.04},
+	{Style: "霸道", RecruitMultiplier: 0.95, PowerRecruitMultiplier: 1.20, BreakthroughMultiplier: 1.00, AggressionBias: 0.14},
+	{Style: "清修", RecruitMultiplier: 1.10, PowerRecruitMultiplier: 0.95, BreakthroughMultiplier: 1.10, AggressionBias: -0.10},
+}
 
 // SectStat summarizes a sect's live cultivator population and combat standing.
 type SectStat struct {
@@ -173,6 +194,12 @@ func SectNames() []string {
 	names := make([]string, len(sectNames))
 	copy(names, sectNames)
 	return names
+}
+
+func SectTraits() []SectTrait {
+	traits := make([]SectTrait, len(sectTraits))
+	copy(traits, sectTraits)
+	return traits
 }
 
 func CalculateSectStats(agents *engine.AgentStore) []SectStat {
@@ -231,7 +258,17 @@ func sectRecruitWeights(agents *engine.AgentStore) []float64 {
 	weights := make([]float64, len(stats))
 	total := 0.0
 	for i, stat := range stats {
-		weights[i] = cfg.SectRecruitBaseWeight + math.Sqrt(stat.CombatValue)
+		trait := sectTraitForIndex(i)
+		base := cfg.SectRecruitBaseWeight * trait.RecruitMultiplier
+		power := 0.0
+		if stat.CombatValue > 0 {
+			exponent := cfg.SectRecruitCombatExponent
+			if exponent <= 0 {
+				exponent = 0.5
+			}
+			power = math.Pow(stat.CombatValue, exponent) * trait.PowerRecruitMultiplier
+		}
+		weights[i] = base + power
 		total += weights[i]
 	}
 	if total > 0 {
@@ -242,6 +279,22 @@ func sectRecruitWeights(agents *engine.AgentStore) []float64 {
 	}
 	copy(weights, sectWeights)
 	return weights
+}
+
+func sectTraitForName(name string) SectTrait {
+	for i, sectName := range sectNames {
+		if sectName == name {
+			return sectTraitForIndex(i)
+		}
+	}
+	return SectTrait{RecruitMultiplier: 1, PowerRecruitMultiplier: 1, BreakthroughMultiplier: 1}
+}
+
+func sectTraitForIndex(idx int) SectTrait {
+	if idx >= 0 && idx < len(sectTraits) {
+		return sectTraits[idx]
+	}
+	return SectTrait{RecruitMultiplier: 1, PowerRecruitMultiplier: 1, BreakthroughMultiplier: 1}
 }
 
 func weightedSectName(rng *engine.RNG, weights []float64) string {

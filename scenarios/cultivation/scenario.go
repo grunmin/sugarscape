@@ -31,29 +31,17 @@ func Setup(w *engine.World) {
 		}
 	}
 
-	// Spirit springs.
+	// Layered high-spirit resources: springs, long veins, and rare blessed lands.
 	for range cfg.NumSpiritSprings {
-		sx := w.RNG.Intn(w.Config.GridWidth)
-		sy := w.RNG.Intn(w.Config.GridHeight)
-		for dy := -5; dy <= 5; dy++ {
-			for dx := -5; dx <= 5; dx++ {
-				nx := (sx + dx + w.Config.GridWidth) % w.Config.GridWidth
-				ny := (sy + dy + w.Config.GridHeight) % w.Config.GridHeight
-				dist := float64(dx*dx + dy*dy)
-				boost := 30 * exp(-dist/30)
-				current := env.Env0(nx, ny)
-				newVal := current + boost
-				if newVal > current+40 {
-					newVal = current + 40
-				}
-				if newVal > cfg.SpiritMax {
-					newVal = cfg.SpiritMax
-				}
-				env.SetEnv0(nx, ny, newVal)
-				env.SetEnv1(nx, ny, newVal+25)
-				env.SetEnv2(nx, ny, cfg.SpiritRegenRate+0.05)
-			}
-		}
+		applySpiritNode(env, w.RNG.Intn(w.Config.GridWidth), w.RNG.Intn(w.Config.GridHeight),
+			cfg.SpiritSpringRadius, cfg.SpiritSpringBoost, cfg.SpiritSpringMaxBonus, cfg.SpiritSpringRegenBonus, cfg)
+	}
+	for range cfg.NumSpiritVeins {
+		applySpiritVein(env, w.RNG, cfg, w.Config.GridWidth, w.Config.GridHeight)
+	}
+	for range cfg.NumBlessedLands {
+		applySpiritNode(env, w.RNG.Intn(w.Config.GridWidth), w.RNG.Intn(w.Config.GridHeight),
+			cfg.BlessedLandRadius, cfg.BlessedLandBoost, cfg.BlessedLandMaxBonus, cfg.BlessedLandRegenBonus, cfg)
 	}
 
 	// --- Initialize mortal population (tribal distribution) ---
@@ -142,6 +130,63 @@ func Setup(w *engine.World) {
 func sinF(x, y int, period float64, phase float64) float64 {
 	v := float64(x)*phase + float64(y)*(1-phase)
 	return sin(v/period*2*3.14159 + phase)
+}
+
+func applySpiritVein(env *engine.Grid, rng *engine.RNG, cfg ScenarioConfig, gridW, gridH int) {
+	if cfg.SpiritVeinLength <= 0 || cfg.SpiritVeinRadius <= 0 {
+		return
+	}
+	directions := [][2]int{
+		{1, 0}, {0, 1}, {1, 1}, {1, -1},
+		{2, 1}, {1, 2}, {2, -1}, {1, -2},
+	}
+	dir := directions[rng.Intn(len(directions))]
+	cx := rng.Intn(gridW)
+	cy := rng.Intn(gridH)
+	half := cfg.SpiritVeinLength / 2
+	for step := -half; step <= half; step++ {
+		x := (cx + dir[0]*step + gridW*cfg.SpiritVeinLength) % gridW
+		y := (cy + dir[1]*step + gridH*cfg.SpiritVeinLength) % gridH
+		applySpiritNode(env, x, y, cfg.SpiritVeinRadius, cfg.SpiritVeinBoost, cfg.SpiritVeinMaxBonus, cfg.SpiritVeinRegenBonus, cfg)
+	}
+}
+
+func applySpiritNode(env *engine.Grid, cx, cy, radius int, boost, maxBonus, regenBonus float64, cfg ScenarioConfig) {
+	if radius <= 0 || boost <= 0 {
+		return
+	}
+	sigmaSq := float64(radius*radius) / 3
+	if sigmaSq <= 0 {
+		sigmaSq = 1
+	}
+	localMax := cfg.SpiritMax + maxBonus
+	if localMax < cfg.SpiritMax {
+		localMax = cfg.SpiritMax
+	}
+	for dy := -radius; dy <= radius; dy++ {
+		for dx := -radius; dx <= radius; dx++ {
+			nx := (cx + dx + env.Width) % env.Width
+			ny := (cy + dy + env.Height) % env.Height
+			distSq := float64(dx*dx + dy*dy)
+			boostAtCell := boost * exp(-distSq/(2*sigmaSq))
+			if boostAtCell <= 0 {
+				continue
+			}
+			current := env.Env0(nx, ny)
+			newVal := current + boostAtCell
+			if newVal > localMax {
+				newVal = localMax
+			}
+			env.SetEnv0(nx, ny, newVal)
+			if env.Env1(nx, ny) < localMax {
+				env.SetEnv1(nx, ny, localMax)
+			}
+			regen := cfg.SpiritRegenRate + regenBonus
+			if env.Env2(nx, ny) < regen {
+				env.SetEnv2(nx, ny, regen)
+			}
+		}
+	}
 }
 
 func sin(v float64) float64 {

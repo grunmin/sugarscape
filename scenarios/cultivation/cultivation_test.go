@@ -27,6 +27,34 @@ func TestSetupNormalizesMortalPopulation(t *testing.T) {
 	}
 }
 
+func TestSetupCreatesLayeredHighSpiritRegions(t *testing.T) {
+	cfg := engine.DefaultEngineConfig()
+	cfg.GridWidth = 80
+	cfg.GridHeight = 80
+	cfg.NumWorkers = 1
+
+	w := engine.NewWorld(cfg)
+	Setup(w)
+
+	scnCfg := DefaultScenarioConfig()
+	highMaxCells := 0
+	veryHighSpiritCells := 0
+	for _, cell := range w.Curr.Env.Cells {
+		if cell.Env1 > scnCfg.SpiritMax+scnCfg.SpiritSpringMaxBonus {
+			highMaxCells++
+		}
+		if cell.Env0 > scnCfg.SpiritMax {
+			veryHighSpiritCells++
+		}
+	}
+	if highMaxCells == 0 {
+		t.Fatal("no high-capacity spirit cells created, want layered veins or blessed lands")
+	}
+	if veryHighSpiritCells == 0 {
+		t.Fatal("no cells above default spirit max, want high-tier spirit regions")
+	}
+}
+
 func TestBreakthroughUsesNewRealmQiMax(t *testing.T) {
 	oldBreakthrough := DefaultRealms[0].BreakthroughBase
 	DefaultRealms[0].BreakthroughBase = 1.0
@@ -175,6 +203,7 @@ func TestSectBreakthroughProbabilityBonus(t *testing.T) {
 		t.Fatalf("loose breakthrough probability = %v, want %v", got, rc.BreakthroughBase)
 	}
 	want := rc.BreakthroughBase * 1.3
+	want *= sectTraitForName("宗门1").BreakthroughMultiplier
 	if got := breakthroughProbability(rc, sect, cfg, 0); got != want {
 		t.Fatalf("sect breakthrough probability = %v, want %v", got, want)
 	}
@@ -656,11 +685,17 @@ func TestSectDefaultsMatchStrategy(t *testing.T) {
 	if cfg.SectMentorScale != 10 {
 		t.Fatalf("sect mentor scale = %v, want 10", cfg.SectMentorScale)
 	}
-	if cfg.SectRecruitBaseWeight != 100 {
-		t.Fatalf("sect recruit base weight = %v, want 100", cfg.SectRecruitBaseWeight)
+	if cfg.SectRecruitBaseWeight != 40 {
+		t.Fatalf("sect recruit base weight = %v, want 40", cfg.SectRecruitBaseWeight)
+	}
+	if cfg.SectRecruitCombatExponent != 0.55 {
+		t.Fatalf("sect recruit combat exponent = %v, want 0.55", cfg.SectRecruitCombatExponent)
 	}
 	if len(sectNames) != 7 {
 		t.Fatalf("sect count = %d, want 7", len(sectNames))
+	}
+	if len(sectTraits) != len(sectNames) {
+		t.Fatalf("sect trait count = %d, want %d", len(sectTraits), len(sectNames))
 	}
 }
 
@@ -728,7 +763,7 @@ func TestSectCombatStatsUseSquaredCombatPower(t *testing.T) {
 	}
 }
 
-func TestSectRecruitWeightsUseSqrtCombatValue(t *testing.T) {
+func TestSectRecruitWeightsUseTraitsAndCombatValue(t *testing.T) {
 	w := engine.NewWorld(engine.DefaultEngineConfig())
 	a := engine.NewAttrBag()
 	a.Num["combat_power"] = 3
@@ -741,11 +776,17 @@ func TestSectRecruitWeightsUseSqrtCombatValue(t *testing.T) {
 	w.Next.Agents.Add("cultivator", 1, 1, b)
 
 	weights := sectRecruitWeights(w.Next.Agents)
-	if weights[0] != 103 || weights[1] != 106 {
-		t.Fatalf("sect recruit weights = %v, want first two weights 103 and 106", weights[:2])
+	cfg := DefaultScenarioConfig()
+	want0 := cfg.SectRecruitBaseWeight*sectTraits[0].RecruitMultiplier +
+		math.Pow(9, cfg.SectRecruitCombatExponent)*sectTraits[0].PowerRecruitMultiplier
+	want1 := cfg.SectRecruitBaseWeight*sectTraits[1].RecruitMultiplier +
+		math.Pow(36, cfg.SectRecruitCombatExponent)*sectTraits[1].PowerRecruitMultiplier
+	if math.Abs(weights[0]-want0) > 1e-12 || math.Abs(weights[1]-want1) > 1e-12 {
+		t.Fatalf("sect recruit weights = %v, want first two %.6f and %.6f", weights[:2], want0, want1)
 	}
-	if weights[2] != 100 {
-		t.Fatalf("empty sect recruit weight = %v, want 100", weights[2])
+	want2 := cfg.SectRecruitBaseWeight * sectTraits[2].RecruitMultiplier
+	if math.Abs(weights[2]-want2) > 1e-12 {
+		t.Fatalf("empty sect recruit weight = %v, want %v", weights[2], want2)
 	}
 }
 

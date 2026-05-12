@@ -34,11 +34,27 @@ type ScenarioConfig struct {
 	ConversionLocalSpiritThreshold     float64
 	ConversionSpiritCheckEvery         int
 	// Spirit density
-	BaseSpiritDensity    float64
-	SpiritRegenRate      float64
-	SpiritMax            float64
-	NumSpiritSprings     int
-	EnvironmentTickEvery int
+	BaseSpiritDensity      float64
+	SpiritRegenRate        float64
+	SpiritMax              float64
+	SpiritDiffusionRate    float64
+	NumSpiritSprings       int
+	SpiritSpringRadius     int
+	SpiritSpringBoost      float64
+	SpiritSpringMaxBonus   float64
+	SpiritSpringRegenBonus float64
+	NumSpiritVeins         int
+	SpiritVeinLength       int
+	SpiritVeinRadius       int
+	SpiritVeinBoost        float64
+	SpiritVeinMaxBonus     float64
+	SpiritVeinRegenBonus   float64
+	NumBlessedLands        int
+	BlessedLandRadius      int
+	BlessedLandBoost       float64
+	BlessedLandMaxBonus    float64
+	BlessedLandRegenBonus  float64
+	EnvironmentTickEvery   int
 	// Cultivation
 	BaseQi                     float64
 	CultivationSpeed           float64
@@ -49,12 +65,13 @@ type ScenarioConfig struct {
 	BreakthroughCD             int     // ticks of cooldown after failed breakthrough
 	JindanBreakFailDeathChance float64
 	// Sects
-	SectMembershipChance  float64
-	SectAllyCombatAssist  float64 // fraction of same-sect same-cell combat power counted in attack judgment
-	SectBreakthroughBonus float64 // relative breakthrough probability bonus for sect cultivators
-	SectMentorBonusCap    float64 // max extra breakthrough multiplier from one-realm-higher sect mentors
-	SectMentorScale       float64 // saturation scale for one-realm-higher mentor count
-	SectRecruitBaseWeight float64 // minimum recruit weight per sect to avoid permanent cold-start starvation
+	SectMembershipChance      float64
+	SectAllyCombatAssist      float64 // fraction of same-sect same-cell combat power counted in attack judgment
+	SectBreakthroughBonus     float64 // relative breakthrough probability bonus for sect cultivators
+	SectMentorBonusCap        float64 // max extra breakthrough multiplier from one-realm-higher sect mentors
+	SectMentorScale           float64 // saturation scale for one-realm-higher mentor count
+	SectRecruitBaseWeight     float64 // minimum recruit weight per sect to avoid permanent cold-start starvation
+	SectRecruitCombatExponent float64 // exponent applied to sect combat value during recruitment
 	// Combat
 	CombatDeathChance    float64
 	CombatCostBase       float64 // fraction of opponent qi paid by winner in combat
@@ -76,9 +93,25 @@ func DefaultScenarioConfig() ScenarioConfig {
 		ConversionLocalSpiritThreshold:     10,
 		ConversionSpiritCheckEvery:         20,
 		BaseSpiritDensity:                  30,
-		SpiritRegenRate:                    0.05,
+		SpiritRegenRate:                    0.02,
 		SpiritMax:                          100,
-		NumSpiritSprings:                   20,
+		SpiritDiffusionRate:                0.02,
+		NumSpiritSprings:                   30,
+		SpiritSpringRadius:                 8,
+		SpiritSpringBoost:                  60,
+		SpiritSpringMaxBonus:               80,
+		SpiritSpringRegenBonus:             0.08,
+		NumSpiritVeins:                     12,
+		SpiritVeinLength:                   80,
+		SpiritVeinRadius:                   6,
+		SpiritVeinBoost:                    45,
+		SpiritVeinMaxBonus:                 120,
+		SpiritVeinRegenBonus:               0.05,
+		NumBlessedLands:                    4,
+		BlessedLandRadius:                  18,
+		BlessedLandBoost:                   140,
+		BlessedLandMaxBonus:                260,
+		BlessedLandRegenBonus:              0.16,
 		EnvironmentTickEvery:               5,
 		BaseQi:                             100,
 		CultivationSpeed:                   0.5,
@@ -93,7 +126,8 @@ func DefaultScenarioConfig() ScenarioConfig {
 		SectBreakthroughBonus:              0.30,
 		SectMentorBonusCap:                 0.50,
 		SectMentorScale:                    10,
-		SectRecruitBaseWeight:              100,
+		SectRecruitBaseWeight:              40,
+		SectRecruitCombatExponent:          0.55,
 		CombatDeathChance:                  0.3,
 		CombatCostBase:                     0.20,
 		CombatSelfMinCost:                  0.02,

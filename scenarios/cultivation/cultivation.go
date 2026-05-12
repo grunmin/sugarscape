@@ -194,8 +194,10 @@ func breakthroughSustainTicks(cfg ScenarioConfig, realm int) int {
 
 func breakthroughProbability(rc RealmConfig, attrs engine.AttrBag, cfg ScenarioConfig, oneRealmHigherMentors int) float64 {
 	prob := rc.BreakthroughBase
-	if attrs.Str["sect"] != "" {
+	sect := attrs.Str["sect"]
+	if sect != "" {
 		prob *= 1 + cfg.SectBreakthroughBonus
+		prob *= sectTraitForName(sect).BreakthroughMultiplier
 		prob *= mentorBreakthroughMultiplier(oneRealmHigherMentors, cfg)
 	}
 	if prob > 1 {

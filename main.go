@@ -161,6 +161,7 @@ func printTickStats(w *engine.World, startTime time.Time, pausedDuration time.Du
 	printWorldSpiritStats(w.Curr.Env)
 	printSectStats(w.Curr.Agents)
 	printSectRealmShare(w.Curr.Agents)
+	printRealmAggressionStats(w)
 	tracker.printReport(w)
 	printNotableEvents(w.Stats.DrainNotableEvents())
 }
@@ -333,6 +334,15 @@ func calcSectRealmShare(agents *engine.AgentStore) []sectRealmShare {
 		}
 	}
 	return shares
+}
+
+func printRealmAggressionStats(w *engine.World) {
+	stats := realmAggressionStats(w)
+	fmt.Println("  各境界平均攻击性")
+	fmt.Printf("    %-4s %-8s %-8s\n", "境界", "人数", "平均攻击")
+	for _, stat := range stats {
+		fmt.Printf("    %-4s %-8d %-8.4f\n", stat.Name, stat.Count, stat.Avg)
+	}
 }
 
 func percentileValue(sorted []float64, q float64) float64 {
