@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"io"
 	"math/rand"
@@ -13,11 +14,31 @@ import (
 
 	"github.com/runmin/sugarscape/engine"
 	"github.com/runmin/sugarscape/scenarios/cultivation"
+	"github.com/runmin/sugarscape/server"
 )
 
 const autoPauseEvery = 5 * time.Minute
 
 func main() {
+	webMode := flag.Bool("web", false, "Start web dashboard instead of terminal simulation")
+	webPort := flag.Int("port", 8080, "Web dashboard port")
+	flag.Parse()
+
+	// Also accept "web" as a positional argument (without dash) for convenience.
+	if !*webMode {
+		for _, arg := range flag.Args() {
+			if arg == "web" {
+				*webMode = true
+				break
+			}
+		}
+	}
+
+	if *webMode {
+		runWebDashboard(*webPort)
+		return
+	}
+
 	cfg := engine.DefaultEngineConfig()
 	scnCfg := cultivation.DefaultScenarioConfig()
 
@@ -972,4 +993,41 @@ func sumInt(snaps []engine.DataPoint, fn func(engine.DataPoint) int) int {
 		total += fn(dp)
 	}
 	return total
+}
+
+// runWebDashboard starts the simulation with a web-based visualization dashboard.
+func runWebDashboard(port int) {
+	cfg := engine.DefaultEngineConfig()
+	scnCfg := cultivation.DefaultScenarioConfig()
+
+	initStart := time.Now()
+	world := engine.NewWorld(cfg)
+	cultivation.Setup(world)
+	initElapsed := time.Since(initStart)
+
+	fmt.Println("=== 修仙世界模拟器 (Web Dashboard) ===")
+	fmt.Printf("世界: %d×%d  凡人/格: %.0f  种子: %d  并行: %d 核\n",
+		cfg.GridWidth, cfg.GridHeight,
+		scnCfg.MortalBaseDensity, cfg.Seed, cfg.NumWorkers)
+	fmt.Printf("初始化耗时: %v\n", initElapsed.Round(time.Millisecond))
+
+	dashCfg := server.DefaultDashboardConfig()
+	dashCfg.Port = port
+	dashboard := server.NewDashboard(world, dashCfg)
+
+	// Handle Ctrl+C for graceful shutdown
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-sigCh
+		fmt.Println("\n正在关闭...")
+		dashboard.Stop()
+		os.Exit(0)
+	}()
+
+	fmt.Printf("仪表盘启动于 http://localhost:%d\n", port)
+	if err := dashboard.Start(); err != nil {
+		fmt.Printf("仪表盘启动失败: %v\n", err)
+		os.Exit(1)
+	}
 }

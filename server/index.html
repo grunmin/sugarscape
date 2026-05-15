@@ -1,0 +1,1447 @@
+<!doctype html>
+<html lang="zh-CN">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Sugarscape 修仙世界 · 实时监控</title>
+        <style>
+            :root {
+                --bg: #0a0a14;
+                --panel: #111122;
+                --panel2: #151530;
+                --border: #2a2a4a;
+                --text: #d0d0e0;
+                --text2: #8888aa;
+                --accent: #4a9eff;
+                --accent2: #ff6b6b;
+                --gold: #ffd700;
+                --purple: #b44dff;
+                --cyan: #00d4d4;
+                --green: #4dff91;
+                --orange: #ff9f43;
+            }
+            * {
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+            }
+            body {
+                background: var(--bg);
+                color: var(--text);
+                font-family:
+                    "Segoe UI",
+                    system-ui,
+                    -apple-system,
+                    sans-serif;
+                height: 100vh;
+                overflow: hidden;
+                display: flex;
+                flex-direction: column;
+            }
+
+            /* Top Bar */
+            #topbar {
+                display: flex;
+                align-items: center;
+                gap: 16px;
+                padding: 10px 18px;
+                background: var(--panel);
+                border-bottom: 1px solid var(--border);
+                flex-shrink: 0;
+                z-index: 10;
+            }
+            #topbar .logo {
+                font-size: 18px;
+                font-weight: 700;
+                color: var(--accent);
+                letter-spacing: 1px;
+            }
+            #topbar .tick-info {
+                display: flex;
+                gap: 16px;
+                font-size: 13px;
+            }
+            #topbar .tick-info span {
+                color: var(--text2);
+            }
+            #topbar .tick-info strong {
+                color: var(--text);
+                margin-left: 4px;
+            }
+            #topbar .sep {
+                width: 1px;
+                height: 24px;
+                background: var(--border);
+            }
+            #topbar button {
+                background: var(--panel2);
+                color: var(--text);
+                border: 1px solid var(--border);
+                padding: 6px 14px;
+                border-radius: 6px;
+                cursor: pointer;
+                font-size: 13px;
+                transition: all 0.15s;
+            }
+            #topbar button:hover {
+                background: #2a2a50;
+                border-color: var(--accent);
+            }
+            #topbar button:active {
+                transform: scale(0.97);
+            }
+            #topbar button.accent {
+                background: var(--accent);
+                color: #fff;
+                border-color: var(--accent);
+                font-weight: 600;
+            }
+            #topbar button.accent:hover {
+                background: #5ab4ff;
+            }
+            #topbar button.danger {
+                background: var(--accent2);
+                color: #fff;
+                border-color: var(--accent2);
+                font-weight: 600;
+            }
+            #topbar select {
+                background: var(--panel2);
+                color: var(--text);
+                border: 1px solid var(--border);
+                padding: 6px 10px;
+                border-radius: 6px;
+                font-size: 13px;
+                cursor: pointer;
+            }
+            #topbar .status-dot {
+                width: 8px;
+                height: 8px;
+                border-radius: 50%;
+            }
+            #topbar .status-dot.running {
+                background: var(--green);
+                box-shadow: 0 0 8px var(--green);
+            }
+            #topbar .status-dot.paused {
+                background: var(--orange);
+                box-shadow: 0 0 8px var(--orange);
+            }
+
+            /* Main Layout */
+            #main {
+                display: flex;
+                flex: 1;
+                overflow: hidden;
+            }
+
+            /* Map Area */
+            #map-area {
+                flex: 1;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                position: relative;
+                background: radial-gradient(
+                    ellipse at center,
+                    #0d0d20 0%,
+                    #060612 100%
+                );
+                min-width: 0;
+            }
+            #map-canvas {
+                image-rendering: pixelated;
+                border: 1px solid var(--border);
+                border-radius: 4px;
+                cursor: crosshair;
+            }
+            #map-overlays {
+                display: flex;
+                gap: 8px;
+                margin-top: 8px;
+            }
+            #map-overlays label {
+                font-size: 12px;
+                color: var(--text2);
+                display: flex;
+                align-items: center;
+                gap: 4px;
+                cursor: pointer;
+                user-select: none;
+            }
+            #map-overlays input[type="checkbox"] {
+                accent-color: var(--accent);
+            }
+            #tooltip {
+                position: absolute;
+                pointer-events: none;
+                background: rgba(10, 10, 30, 0.95);
+                border: 1px solid var(--accent);
+                border-radius: 8px;
+                padding: 10px 14px;
+                font-size: 12px;
+                color: var(--text);
+                display: none;
+                z-index: 20;
+                max-width: 220px;
+                line-height: 1.6;
+            }
+            #tooltip .tt-name {
+                font-weight: 700;
+                font-size: 14px;
+                margin-bottom: 4px;
+            }
+            #tooltip .tt-row {
+                display: flex;
+                justify-content: space-between;
+                gap: 12px;
+            }
+            #tooltip .tt-label {
+                color: var(--text2);
+            }
+
+            /* Sidebar */
+            #sidebar {
+                width: 380px;
+                flex-shrink: 0;
+                background: var(--panel);
+                border-left: 1px solid var(--border);
+                display: flex;
+                flex-direction: column;
+                overflow: hidden;
+            }
+            #sidebar .section {
+                padding: 12px 16px;
+                border-bottom: 1px solid var(--border);
+            }
+            #sidebar .section-title {
+                font-size: 12px;
+                font-weight: 700;
+                text-transform: uppercase;
+                color: var(--text2);
+                letter-spacing: 1px;
+                margin-bottom: 8px;
+            }
+            .stat-grid {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 6px;
+            }
+            .stat-item {
+                background: var(--panel2);
+                border-radius: 6px;
+                padding: 8px 10px;
+            }
+            .stat-item .stat-label {
+                font-size: 11px;
+                color: var(--text2);
+            }
+            .stat-item .stat-val {
+                font-size: 16px;
+                font-weight: 700;
+            }
+            .stat-item .stat-val.big {
+                font-size: 20px;
+            }
+
+            /* Realm Bar */
+            .realm-row {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                margin: 3px 0;
+                font-size: 12px;
+            }
+            .realm-row .realm-dot {
+                width: 10px;
+                height: 10px;
+                border-radius: 50%;
+                flex-shrink: 0;
+            }
+            .realm-row .realm-name {
+                width: 30px;
+                flex-shrink: 0;
+            }
+            .realm-row .realm-bar {
+                flex: 1;
+                height: 8px;
+                background: var(--panel2);
+                border-radius: 4px;
+                overflow: hidden;
+            }
+            .realm-row .realm-bar-fill {
+                height: 100%;
+                border-radius: 4px;
+                transition: width 0.3s;
+            }
+            .realm-row .realm-count {
+                width: 40px;
+                text-align: right;
+                font-weight: 600;
+                flex-shrink: 0;
+            }
+
+            /* Tabs */
+            #tab-bar {
+                display: flex;
+                border-bottom: 1px solid var(--border);
+            }
+            #tab-bar .tab-btn {
+                flex: 1;
+                padding: 8px 0;
+                text-align: center;
+                font-size: 12px;
+                cursor: pointer;
+                background: transparent;
+                color: var(--text2);
+                border: none;
+                border-bottom: 2px solid transparent;
+                transition: all 0.15s;
+            }
+            #tab-bar .tab-btn:hover {
+                color: var(--text);
+            }
+            #tab-bar .tab-btn.active {
+                color: var(--accent);
+                border-bottom-color: var(--accent);
+            }
+            #tab-content {
+                flex: 1;
+                overflow-y: auto;
+                padding: 8px 0;
+            }
+            .tab-panel {
+                display: none;
+                padding: 0 12px;
+            }
+            .tab-panel.active {
+                display: block;
+            }
+
+            /* Sect Cards */
+            .sect-card {
+                background: var(--panel2);
+                border-radius: 8px;
+                padding: 10px 12px;
+                margin-bottom: 8px;
+                border-left: 3px solid transparent;
+            }
+            .sect-card .sect-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+            }
+            .sect-card .sect-name {
+                font-weight: 700;
+                font-size: 13px;
+            }
+            .sect-card .sect-trait {
+                font-size: 11px;
+                color: var(--text2);
+            }
+            .sect-card .sect-mini-bar {
+                display: flex;
+                gap: 2px;
+                margin-top: 6px;
+                height: 6px;
+            }
+
+            /* Tracked Cards */
+            .tracked-card {
+                background: var(--panel2);
+                border-radius: 8px;
+                padding: 10px 12px;
+                margin-bottom: 8px;
+                border: 1px solid var(--border);
+            }
+            .tracked-card.dead {
+                opacity: 0.5;
+            }
+            .tracked-card .tc-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+            }
+            .tracked-card .tc-id {
+                font-weight: 700;
+                font-size: 13px;
+            }
+            .tracked-card .tc-realm {
+                font-size: 12px;
+                padding: 2px 8px;
+                border-radius: 10px;
+                font-weight: 600;
+            }
+            .tracked-card .tc-grid {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 4px;
+                margin-top: 6px;
+            }
+            .tracked-card .tc-item {
+                font-size: 11px;
+            }
+            .tracked-card .tc-item .tcl {
+                color: var(--text2);
+            }
+            .progress-bar {
+                height: 6px;
+                background: var(--panel);
+                border-radius: 3px;
+                overflow: hidden;
+                margin-top: 2px;
+            }
+            .progress-bar-fill {
+                height: 100%;
+                border-radius: 3px;
+                transition: width 0.5s;
+            }
+            .tc-untrack {
+                font-size: 11px;
+                color: var(--accent2);
+                cursor: pointer;
+                margin-top: 4px;
+                display: inline-block;
+            }
+
+            /* Events */
+            .event-item {
+                padding: 6px 0;
+                border-bottom: 1px solid #1a1a30;
+                font-size: 12px;
+                display: flex;
+                gap: 8px;
+                align-items: baseline;
+            }
+            .event-item .ev-tick {
+                color: var(--text2);
+                font-size: 11px;
+                min-width: 50px;
+            }
+            .event-item .ev-kind {
+                font-weight: 700;
+                min-width: 28px;
+            }
+            .event-item .ev-kind.birth {
+                color: var(--green);
+            }
+            .event-item .ev-kind.death {
+                color: var(--accent2);
+            }
+            .event-item .ev-kind.break {
+                color: var(--gold);
+            }
+            .event-item .ev-desc {
+                flex: 1;
+            }
+
+            /* Trend Chart */
+            #trend-canvas {
+                width: 100%;
+                border-radius: 6px;
+            }
+
+            /* Responsive */
+            @media (max-width: 900px) {
+                #main {
+                    flex-direction: column;
+                }
+                #sidebar {
+                    width: 100%;
+                    max-height: 40vh;
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <!-- Top Bar -->
+        <div id="topbar">
+            <div class="logo">☯ 修仙世界</div>
+            <div class="tick-info">
+                <span>纪元<strong id="t-year">0.00</strong></span>
+                <span>时刻<strong id="t-tick">0</strong></span>
+            </div>
+            <div class="sep"></div>
+            <span
+                class="status-dot running"
+                id="status-dot"
+                title="运行中"
+            ></span>
+            <select id="speed-select">
+                <option value="1">1x</option>
+                <option value="5">5x</option>
+                <option value="10" selected>10x</option>
+                <option value="20">20x</option>
+                <option value="50">50x</option>
+                <option value="100">100x</option>
+            </select>
+            <button id="btn-step" class="accent" title="单步执行">
+                ⏭ 单步
+            </button>
+            <button id="btn-pause" class="accent" title="暂停/继续">
+                ⏯ 暂停
+            </button>
+            <button id="btn-clear-track" class="danger" title="清除所有追踪">
+                ✕ 清除追踪
+            </button>
+        </div>
+
+        <!-- Main -->
+        <div id="main">
+            <!-- Map -->
+            <div id="map-area">
+                <canvas id="map-canvas"></canvas>
+                <div id="map-overlays">
+                    <label
+                        ><input type="checkbox" id="ol-spirit" checked />
+                        灵气</label
+                    >
+                    <label
+                        ><input type="checkbox" id="ol-features" checked />
+                        灵地</label
+                    >
+                    <label
+                        ><input type="checkbox" id="ol-cultivators" checked />
+                        修士</label
+                    >
+                </div>
+                <div id="tooltip"></div>
+            </div>
+
+            <!-- Sidebar -->
+            <div id="sidebar">
+                <!-- Overview -->
+                <div class="section">
+                    <div class="section-title">📊 世界概况</div>
+                    <div class="stat-grid">
+                        <div class="stat-item">
+                            <div class="stat-label">总修士</div>
+                            <div class="stat-val big" id="sv-cult">0</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">总凡人</div>
+                            <div class="stat-val big" id="sv-mortal">0</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">平均灵气</div>
+                            <div class="stat-val" id="sv-qi">0</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">平均年龄</div>
+                            <div class="stat-val" id="sv-age">0</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">平均战力</div>
+                            <div class="stat-val" id="sv-cp">0</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">平均侵略性</div>
+                            <div class="stat-val" id="sv-agg">0</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">死亡/诞生</div>
+                            <div class="stat-val" id="sv-death-birth">0/0</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">突破/转化</div>
+                            <div class="stat-val" id="sv-break-conv">0/0</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Realm Stats -->
+                <div class="section">
+                    <div class="section-title">🏔 境界分布</div>
+                    <div id="realm-bars"></div>
+                </div>
+
+                <!-- Tabs -->
+                <div id="tab-bar">
+                    <button class="tab-btn active" data-tab="sects">
+                        宗门
+                    </button>
+                    <button class="tab-btn" data-tab="tracked">追踪</button>
+                    <button class="tab-btn" data-tab="events">事件</button>
+                    <button class="tab-btn" data-tab="trends">趋势</button>
+                </div>
+                <div id="tab-content">
+                    <div class="tab-panel active" id="tab-sects"></div>
+                    <div class="tab-panel" id="tab-tracked"></div>
+                    <div class="tab-panel" id="tab-events"></div>
+                    <div class="tab-panel" id="tab-trends">
+                        <canvas id="trend-canvas" height="260"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <script>
+            // ──────────────────────────────────
+            // CONSTANTS
+            // ──────────────────────────────────
+            const SPIRIT_HEAT = 0;
+            const MORTAL_HEAT = 1;
+            const CULT_DENSITY = 2;
+
+            const REALM_NAMES = [
+                "凡人",
+                "练气",
+                "筑基",
+                "金丹",
+                "元婴",
+                "化神",
+            ];
+            const REALM_LEVEL_NAMES = [
+                "凡人",
+                "练气",
+                "筑基",
+                "金丹",
+                "元婴",
+                "化神",
+            ];
+            const REALM_COLORS = [
+                "#888",
+                "#aaa",
+                "#4fc3f7",
+                "#ffd740",
+                "#ff6e40",
+                "#ff1744",
+            ];
+            const REALM_COLORS_HEX = [
+                0x888888, 0xaaaaaa, 0x4fc3f7, 0xffd740, 0xff6e40, 0xff1744,
+            ];
+            const STRATEGY_NAMES = [
+                "aggressive",
+                "peaceful",
+                "merchant",
+                "hermit",
+                "bandit",
+            ];
+            const STRATEGY_COLORS = [
+                "#ff6b6b",
+                "#4dff91",
+                "#ffd740",
+                "#b4b4ff",
+                "#ff9f43",
+            ];
+            const SECT_NAMES = [
+                "宗门1",
+                "宗门2",
+                "宗门3",
+                "宗门4",
+                "宗门5",
+                "宗门6",
+                "宗门7",
+            ];
+            const SECT_COLORS = [
+                "#ff6b6b",
+                "#4fc3f7",
+                "#ffd740",
+                "#b44dff",
+                "#4dff91",
+                "#ff9f43",
+                "#ff1493",
+            ];
+            const FEATURE_COLORS = {
+                spring: "#4fc3f7",
+                vein: "#ffd740",
+                blessed_land: "#b44dff",
+            };
+            const FEATURE_LABELS = {
+                spring: "灵泉",
+                vein: "灵脉",
+                blessed_land: "福地",
+            };
+
+            // ──────────────────────────────────
+            // STATE
+            // ──────────────────────────────────
+            let gState = null; // latest StateSnapshot
+            let gPaused = false;
+            let gViewMode = SPIRIT_HEAT;
+            let gShowFeatures = true;
+            let gShowCultivators = true;
+            let gHoveredAgent = null;
+            let gCanvasScale = 1;
+            let gHeatmapCache = {}; // { 'spirit': ImageData, 'mortal': ImageData, 'cult': ImageData }
+            let gTrendHistory = []; // history points for trend chart
+            let gMaxTrendPoints = 300;
+
+            // ──────────────────────────────────
+            // DOM REFS
+            // ──────────────────────────────────
+            const canvas = document.getElementById("map-canvas");
+            const ctx = canvas.getContext("2d");
+            const tooltip = document.getElementById("tooltip");
+            const statusDot = document.getElementById("status-dot");
+
+            // ──────────────────────────────────
+            // BASE64 DECODE
+            // ──────────────────────────────────
+            function base64Decode(str) {
+                const chars =
+                    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+                const lut = {};
+                for (let i = 0; i < chars.length; i++) lut[chars[i]] = i;
+                const bytes = [];
+                let i = 0;
+                while (i < str.length) {
+                    const c0 = lut[str[i++]],
+                        c1 = lut[str[i++] || "A"],
+                        c2 = lut[str[i++] || "A"],
+                        c3 = lut[str[i++] || "A"];
+                    bytes.push((c0 << 2) | (c1 >> 4));
+                    if (str[i - 2] !== "=")
+                        bytes.push(((c1 & 15) << 4) | (c2 >> 2));
+                    if (str[i - 1] !== "=") bytes.push(((c2 & 3) << 6) | c3);
+                }
+                return new Uint8Array(bytes);
+            }
+
+            // ──────────────────────────────────
+            // HEATMAP BUILDING
+            // ──────────────────────────────────
+            function buildSpiritHeatmap(snapshot) {
+                const { hmWidth, hmHeight, spiritMap, spiritMax } = snapshot;
+                const bytes = base64Decode(spiritMap);
+                const imgData = ctx.createImageData(hmWidth, hmHeight);
+                for (let i = 0; i < hmWidth * hmHeight; i++) {
+                    const v = bytes[i] / 255;
+                    // Green gradient for spirit: dark green → cyan → white
+                    const r = Math.floor(v * v * 180);
+                    const g = Math.floor(v * 220 + 20);
+                    const b = Math.floor(v * 255);
+                    const p = i * 4;
+                    imgData.data[p] = r;
+                    imgData.data[p + 1] = g;
+                    imgData.data[p + 2] = b;
+                    imgData.data[p + 3] = 255;
+                }
+                return imgData;
+            }
+
+            function buildMortalHeatmap(snapshot) {
+                const { hmWidth, hmHeight, mortalMap, mortalMax } = snapshot;
+                const bytes = base64Decode(mortalMap);
+                const imgData = ctx.createImageData(hmWidth, hmHeight);
+                for (let i = 0; i < hmWidth * hmHeight; i++) {
+                    const hi = bytes[i * 2],
+                        lo = bytes[i * 2 + 1];
+                    const val = (hi << 8) | lo;
+                    const v = val / 65535;
+                    // Amber gradient: dark → orange → yellow-white
+                    const r = Math.floor(128 + v * 127);
+                    const g = Math.floor(40 + v * 180);
+                    const b = Math.floor(10 + v * 50);
+                    const p = i * 4;
+                    imgData.data[p] = r;
+                    imgData.data[p + 1] = g;
+                    imgData.data[p + 2] = b;
+                    imgData.data[p + 3] = 255;
+                }
+                return imgData;
+            }
+
+            function buildCultDensityHeatmap(snapshot) {
+                const { hmWidth, hmHeight, cultivators } = snapshot;
+                const counts = new Uint32Array(hmWidth * hmHeight);
+                let maxCount = 0;
+                for (const c of cultivators) {
+                    const hx = Math.floor(c.x / 5) | 0; // scale = 5
+                    const hy = Math.floor(c.y / 5) | 0;
+                    if (hx >= 0 && hx < hmWidth && hy >= 0 && hy < hmHeight) {
+                        const idx = hy * hmWidth + hx;
+                        counts[idx]++;
+                        if (counts[idx] > maxCount) maxCount = counts[idx];
+                    }
+                }
+                if (maxCount < 1) maxCount = 1;
+                const imgData = ctx.createImageData(hmWidth, hmHeight);
+                for (let i = 0; i < hmWidth * hmHeight; i++) {
+                    const v = counts[i] / maxCount;
+                    // Purple gradient for cultivator density
+                    const r = Math.floor(30 + v * 200);
+                    const g = Math.floor(10 + v * 50);
+                    const b = Math.floor(80 + v * 175);
+                    const p = i * 4;
+                    imgData.data[p] = r;
+                    imgData.data[p + 1] = g;
+                    imgData.data[p + 2] = b;
+                    imgData.data[p + 3] = 255;
+                }
+                return imgData;
+            }
+
+            function getHeatmap(snapshot) {
+                const key =
+                    gViewMode === SPIRIT_HEAT
+                        ? "spirit"
+                        : gViewMode === MORTAL_HEAT
+                          ? "mortal"
+                          : "cult";
+                if (!gHeatmapCache[key]) {
+                    if (gViewMode === SPIRIT_HEAT)
+                        gHeatmapCache[key] = buildSpiritHeatmap(snapshot);
+                    else if (gViewMode === MORTAL_HEAT)
+                        gHeatmapCache[key] = buildMortalHeatmap(snapshot);
+                    else gHeatmapCache[key] = buildCultDensityHeatmap(snapshot);
+                }
+                return gHeatmapCache[key];
+            }
+
+            function clearHeatmapCache() {
+                gHeatmapCache = {};
+            }
+
+            // ──────────────────────────────────
+            // RENDERING
+            // ──────────────────────────────────
+            function gridToCanvas(gx, gy) {
+                // Grid is 1000x1000, heatmap is 200x200, canvas is scaled
+                // For cultivator positions, we map directly: canvasX = gx / 5 * canvasPixelScale
+                const cs = gCanvasScale; // pixels per heatmap cell
+                return { cx: (gx / 5) * cs, cy: (gy / 5) * cs };
+            }
+
+            function render(snapshot) {
+                gState = snapshot;
+
+                const {
+                    width,
+                    height,
+                    hmWidth,
+                    hmHeight,
+                    cultivators,
+                    features,
+                    tracked,
+                } = snapshot;
+
+                // Determine canvas size
+                const maxCanvasSize = Math.min(
+                    window.innerWidth - 420,
+                    window.innerHeight - 80,
+                );
+                gCanvasScale = Math.floor(maxCanvasSize / hmWidth);
+                if (gCanvasScale < 1) gCanvasScale = 1;
+                const cw = hmWidth * gCanvasScale;
+                const ch = hmHeight * gCanvasScale;
+
+                if (canvas.width !== cw || canvas.height !== ch) {
+                    canvas.width = cw;
+                    canvas.height = ch;
+                    canvas.style.width = cw + "px";
+                    canvas.style.height = ch + "px";
+                }
+
+                ctx.clearRect(0, 0, cw, ch);
+
+                // Draw heatmap background
+                const hm = getHeatmap(snapshot);
+                // Create an offscreen canvas to draw the ImageData at native resolution, then scale up
+                const offscreen = document.createElement("canvas");
+                offscreen.width = hmWidth;
+                offscreen.height = hmHeight;
+                const offCtx = offscreen.getContext("2d");
+                offCtx.putImageData(hm, 0, 0);
+                ctx.imageSmoothingEnabled = false;
+                ctx.drawImage(offscreen, 0, 0, cw, ch);
+
+                // Draw features
+                if (gShowFeatures && features) {
+                    for (const f of features) {
+                        const color = FEATURE_COLORS[f.type] || "#888";
+                        const label = FEATURE_LABELS[f.type] || f.type;
+                        const cx = (f.cx / 5) * gCanvasScale;
+                        const cy = (f.cy / 5) * gCanvasScale;
+                        const r = Math.max((f.radius / 5) * gCanvasScale, 4);
+
+                        // Circle
+                        ctx.beginPath();
+                        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+                        ctx.strokeStyle = color;
+                        ctx.lineWidth = Math.max(1.5, gCanvasScale * 0.5);
+                        ctx.globalAlpha = 0.7;
+                        ctx.stroke();
+                        ctx.globalAlpha = 1;
+
+                        // Label
+                        const fs = Math.max(10, gCanvasScale * 2);
+                        ctx.font = `${fs}px sans-serif`;
+                        ctx.fillStyle = color;
+                        ctx.textAlign = "center";
+                        ctx.fillText(label, cx, cy - r - 2);
+                    }
+                }
+
+                // Draw cultivators
+                if (gShowCultivators && cultivators) {
+                    // Tracked ID set for fast lookup
+                    const trackedIds = new Set(
+                        tracked
+                            ? tracked.filter((t) => t.alive).map((t) => t.id)
+                            : [],
+                    );
+
+                    // Draw non-tracked first, then tracked on top
+                    for (const c of cultivators) {
+                        if (trackedIds.has(c.id)) continue;
+                        const { cx, cy } = gridToCanvas(c.x, c.y);
+                        const realm = c.r;
+                        const size = Math.max(
+                            2,
+                            gCanvasScale * 0.55 * (1 + realm * 0.4),
+                        );
+                        ctx.fillStyle = REALM_COLORS[realm] || "#888";
+                        ctx.beginPath();
+                        ctx.arc(cx, cy, size, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+
+                    // Draw tracked cultivators with glow
+                    for (const c of cultivators) {
+                        if (!trackedIds.has(c.id)) continue;
+                        const { cx, cy } = gridToCanvas(c.x, c.y);
+                        const realm = c.r;
+                        const size = Math.max(
+                            3,
+                            gCanvasScale * 0.7 * (1 + realm * 0.4),
+                        );
+
+                        // Glow
+                        ctx.beginPath();
+                        ctx.arc(cx, cy, size + 4, 0, Math.PI * 2);
+                        ctx.fillStyle = "rgba(255,255,255,0.5)";
+                        ctx.fill();
+
+                        // Dot
+                        ctx.beginPath();
+                        ctx.arc(cx, cy, size, 0, Math.PI * 2);
+                        ctx.fillStyle = REALM_COLORS[realm] || "#888";
+                        ctx.fill();
+
+                        // White ring
+                        ctx.beginPath();
+                        ctx.arc(cx, cy, size + 1, 0, Math.PI * 2);
+                        ctx.strokeStyle = "#fff";
+                        ctx.lineWidth = 1.5;
+                        ctx.stroke();
+                    }
+                }
+
+                // Update sidebar
+                updateSidebar(snapshot);
+            }
+
+            // ──────────────────────────────────
+            // SIDEBAR UPDATES
+            // ──────────────────────────────────
+            function updateSidebar(snapshot) {
+                const stats = snapshot.stats;
+
+                // Top bar
+                document.getElementById("t-year").textContent =
+                    snapshot.year.toFixed(2);
+                document.getElementById("t-tick").textContent = snapshot.tick;
+                document.getElementById("speed-select").value = snapshot.speed;
+
+                // Status dot
+                gPaused = snapshot.paused;
+                statusDot.className =
+                    "status-dot " + (snapshot.paused ? "paused" : "running");
+                const pauseBtn = document.getElementById("btn-pause");
+                pauseBtn.textContent = snapshot.paused ? "▶ 继续" : "⏯ 暂停";
+
+                // Overview stats
+                document.getElementById("sv-cult").textContent =
+                    stats.totalCultivators;
+                document.getElementById("sv-mortal").textContent = Math.round(
+                    stats.totalMortals,
+                ).toLocaleString();
+                document.getElementById("sv-qi").textContent =
+                    stats.avgQi.toFixed(1);
+                document.getElementById("sv-age").textContent =
+                    stats.avgAge.toFixed(1);
+                document.getElementById("sv-cp").textContent =
+                    stats.avgCP.toFixed(1);
+                document.getElementById("sv-agg").textContent =
+                    stats.avgAggression.toFixed(2);
+                document.getElementById("sv-death-birth").textContent =
+                    stats.deaths + "/" + stats.births;
+                document.getElementById("sv-break-conv").textContent =
+                    stats.breakthroughs + "/" + stats.mortalConversions;
+
+                // Realm bars
+                updateRealmBars(stats.realmCounts);
+
+                // Tabs
+                updateSectTab(stats.sectStats || []);
+                updateTrackedTab(snapshot.tracked || []);
+                updateEventsTab(snapshot.events || []);
+                updateTrendTab(snapshot);
+            }
+
+            function updateRealmBars(realmCounts) {
+                const container = document.getElementById("realm-bars");
+                const total =
+                    Object.values(realmCounts).reduce((a, b) => a + b, 0) || 1;
+                let html = "";
+                for (let i = 1; i <= 5; i++) {
+                    const name = REALM_LEVEL_NAMES[i];
+                    const count = realmCounts[name] || 0;
+                    const pct = (count / total) * 100;
+                    html += `<div class="realm-row">
+      <span class="realm-dot" style="background:${REALM_COLORS[i]}"></span>
+      <span class="realm-name">${name}</span>
+      <span class="realm-bar"><span class="realm-bar-fill" style="width:${pct}%;background:${REALM_COLORS[i]}"></span></span>
+      <span class="realm-count">${count}</span>
+    </div>`;
+                }
+                container.innerHTML = html;
+            }
+
+            function updateSectTab(sectStats) {
+                const container = document.getElementById("tab-sects");
+                let html = "";
+                for (let i = 0; i < sectStats.length; i++) {
+                    const s = sectStats[i];
+                    const total = s.realmCounts.reduce((a, b) => a + b, 0) || 1;
+                    let miniBars = "";
+                    for (let r = 1; r <= 5; r++) {
+                        const pct = ((s.realmCounts[r] || 0) / total) * 100;
+                        miniBars += `<span style="flex:${Math.max(pct, 0.5)};background:${REALM_COLORS[r]};border-radius:1px;min-width:2px;"></span>`;
+                    }
+                    html += `<div class="sect-card" style="border-left-color:${SECT_COLORS[i % SECT_COLORS.length]}">
+      <div class="sect-header">
+        <span class="sect-name" style="color:${SECT_COLORS[i % SECT_COLORS.length]}">${s.name}</span>
+        <span class="sect-trait">${s.trait || ""} · ${s.count}人</span>
+      </div>
+      <div class="sect-mini-bar">${miniBars}</div>
+      <div style="display:flex;justify-content:space-between;margin-top:4px;font-size:11px;color:var(--text2)">
+        <span>战力值 ${s.combatValue.toFixed(0)}</span>
+        <span>最高CP ${s.maxCP.toFixed(0)}</span>
+      </div>
+    </div>`;
+                }
+                container.innerHTML =
+                    html ||
+                    '<div style="font-size:12px;color:var(--text2);padding:12px">暂无宗门数据</div>';
+            }
+
+            function updateTrackedTab(tracked) {
+                const container = document.getElementById("tab-tracked");
+                if (!tracked || tracked.length === 0) {
+                    container.innerHTML =
+                        '<div style="font-size:12px;color:var(--text2);padding:12px">点击地图上的修士来追踪他们</div>';
+                    return;
+                }
+                let html = "";
+                for (const t of tracked) {
+                    const realmColor = REALM_COLORS[t.realmLevel] || "#888";
+                    const qiPct = t.qiMax > 0 ? (t.qi / t.qiMax) * 100 : 0;
+                    const lifePct =
+                        t.lifespan > 0 ? (t.age / t.lifespan) * 100 : 0;
+                    const deadClass = t.alive ? "" : " dead";
+                    html += `<div class="tracked-card${deadClass}">
+      <div class="tc-header">
+        <span class="tc-id">#${t.id}</span>
+        <span class="tc-realm" style="background:${realmColor}33;color:${realmColor}">${t.realm}</span>
+      </div>
+      <div style="font-size:11px;color:var(--text2);margin-top:2px;">
+        ${t.sect || "散修"} · ${t.strategy || "—"} · (${t.x}, ${t.y})
+      </div>
+      <div class="tc-grid">
+        <div class="tc-item"><span class="tcl">灵气</span> ${t.qi.toFixed(0)}/${t.qiMax.toFixed(0)}
+          <div class="progress-bar"><div class="progress-bar-fill" style="width:${qiPct}%;background:var(--cyan)"></div></div>
+        </div>
+        <div class="tc-item"><span class="tcl">寿命</span> ${t.age.toFixed(0)}/${t.lifespan.toFixed(0)}
+          <div class="progress-bar"><div class="progress-bar-fill" style="width:${lifePct}%;background:${lifePct > 80 ? "var(--accent2)" : "var(--green)"}"></div></div>
+        </div>
+        <div class="tc-item"><span class="tcl">战力</span> ${t.cp.toFixed(1)}</div>
+        <div class="tc-item"><span class="tcl">侵略性</span> ${t.aggression.toFixed(2)}</div>
+        <div class="tc-item"><span class="tcl">突破进度</span> ${(t.btProg * 100).toFixed(1)}%</div>
+        <div class="tc-item"><span class="tcl">修炼速度</span> ${t.cultSpeed.toFixed(2)}</div>
+      </div>
+      <span class="tc-untrack" onclick="untrackAgent(${t.id})">✕ 取消追踪</span>
+    </div>`;
+                }
+                container.innerHTML = html;
+            }
+
+            function updateEventsTab(events) {
+                const container = document.getElementById("tab-events");
+                if (!events || events.length === 0) {
+                    container.innerHTML =
+                        '<div style="font-size:12px;color:var(--text2);padding:12px">暂无事件</div>';
+                    return;
+                }
+                let html = "";
+                for (const ev of events) {
+                    let kindClass = "";
+                    let kindIcon = "";
+                    if (ev.kind === "birth") {
+                        kindClass = "birth";
+                        kindIcon = "👶";
+                    } else if (ev.kind === "death") {
+                        kindClass = "death";
+                        kindIcon = "💀";
+                    } else if (ev.kind === "breakthrough") {
+                        kindClass = "break";
+                        kindIcon = "↑";
+                    } else {
+                        kindIcon = "·";
+                    }
+                    html += `<div class="event-item">
+      <span class="ev-tick">T${ev.tick}</span>
+      <span class="ev-kind ${kindClass}">${kindIcon}${ev.kind}</span>
+      <span class="ev-desc">[${ev.realm}] #${ev.agentId} (${ev.x},${ev.y}) ${ev.reason || ""}</span>
+    </div>`;
+                }
+                container.innerHTML = html;
+            }
+
+            function updateTrendTab(snapshot) {
+                const stats = snapshot.stats;
+                gTrendHistory.push({
+                    tick: snapshot.tick,
+                    year: snapshot.year,
+                    cultivators: stats.totalCultivators,
+                    avgQi: stats.avgQi,
+                    deaths: stats.deaths,
+                    breakthroughs: stats.breakthroughs,
+                });
+                if (gTrendHistory.length > gMaxTrendPoints)
+                    gTrendHistory.shift();
+                drawTrendChart();
+            }
+
+            function drawTrendChart() {
+                const tc = document.getElementById("trend-canvas");
+                if (!tc) return;
+                const dpr = window.devicePixelRatio || 1;
+                const rect = tc.parentElement.getBoundingClientRect();
+                const w = rect.width - 24;
+                const h = 260;
+                tc.width = w * dpr;
+                tc.height = h * dpr;
+                tc.style.width = w + "px";
+                tc.style.height = h + "px";
+                const tctx = tc.getContext("2d");
+                tctx.scale(dpr, dpr);
+
+                // Background
+                tctx.fillStyle = "#0a0a18";
+                tctx.fillRect(0, 0, w, h);
+
+                if (gTrendHistory.length < 2) {
+                    tctx.fillStyle = "#8888aa";
+                    tctx.font = "12px sans-serif";
+                    tctx.textAlign = "center";
+                    tctx.fillText("等待数据...", w / 2, h / 2);
+                    return;
+                }
+
+                const data = gTrendHistory;
+                const pad = { top: 20, right: 20, bottom: 30, left: 50 };
+                const pw = w - pad.left - pad.right;
+                const ph = h - pad.top - pad.bottom;
+
+                // Find ranges
+                let maxCult = 1,
+                    maxQi = 1,
+                    maxEvents = 1;
+                for (const d of data) {
+                    if (d.cultivators > maxCult) maxCult = d.cultivators;
+                    if (d.avgQi > maxQi) maxQi = d.avgQi;
+                    const ev = d.deaths + d.breakthroughs;
+                    if (ev > maxEvents) maxEvents = ev;
+                }
+                maxCult *= 1.1;
+                maxQi *= 1.1;
+                maxEvents = Math.max(maxEvents * 1.2, 5);
+
+                // Grid
+                tctx.strokeStyle = "#1a1a30";
+                tctx.lineWidth = 0.5;
+                for (let i = 0; i <= 4; i++) {
+                    const y = pad.top + (ph / 4) * i;
+                    tctx.beginPath();
+                    tctx.moveTo(pad.left, y);
+                    tctx.lineTo(pad.left + pw, y);
+                    tctx.stroke();
+                }
+
+                function xOf(i) {
+                    return pad.left + (i / (data.length - 1)) * pw;
+                }
+                function yOf(v, max) {
+                    return pad.top + ph - (v / max) * ph;
+                }
+
+                // Draw cultivator line
+                tctx.beginPath();
+                tctx.strokeStyle = "#4fc3f7";
+                tctx.lineWidth = 1.5;
+                tctx.moveTo(xOf(0), yOf(data[0].cultivators, maxCult));
+                for (let i = 1; i < data.length; i++) {
+                    tctx.lineTo(xOf(i), yOf(data[i].cultivators, maxCult));
+                }
+                tctx.stroke();
+
+                // Y-axis labels - left (cultivators)
+                tctx.fillStyle = "#4fc3f7";
+                tctx.font = "9px sans-serif";
+                tctx.textAlign = "right";
+                tctx.fillText(Math.round(maxCult), pad.left - 4, pad.top);
+                tctx.fillText("0", pad.left - 4, pad.top + ph);
+
+                // Draw avgQi line on right axis
+                tctx.beginPath();
+                tctx.strokeStyle = "#ffd740";
+                tctx.lineWidth = 1.5;
+                tctx.moveTo(xOf(0), yOf(data[0].avgQi, maxQi));
+                for (let i = 1; i < data.length; i++) {
+                    tctx.lineTo(xOf(i), yOf(data[i].avgQi, maxQi));
+                }
+                tctx.stroke();
+
+                // Right axis labels
+                tctx.fillStyle = "#ffd740";
+                tctx.textAlign = "left";
+                tctx.fillText(maxQi.toFixed(0), pad.left + pw + 4, pad.top);
+                tctx.fillText("0", pad.left + pw + 4, pad.top + ph);
+
+                // Events as bars
+                const barW = Math.max(1, (pw / data.length) * 0.6);
+                for (let i = 0; i < data.length; i++) {
+                    const ev = data[i].deaths + data[i].breakthroughs;
+                    const barH = (ev / maxEvents) * ph;
+                    tctx.fillStyle = "#ff6b6b44";
+                    tctx.fillRect(
+                        xOf(i) - barW / 2,
+                        pad.top + ph - barH,
+                        barW,
+                        barH,
+                    );
+                }
+
+                // Legend
+                tctx.font = "10px sans-serif";
+                tctx.fillStyle = "#4fc3f7";
+                tctx.textAlign = "left";
+                tctx.fillText("─ 修士数", pad.left + 4, 14);
+                tctx.fillStyle = "#ffd740";
+                tctx.fillText("─ 平均灵气", pad.left + 80, 14);
+                tctx.fillStyle = "#ff6b6b";
+                tctx.fillText("▊ 事件", pad.left + 170, 14);
+            }
+
+            // ──────────────────────────────────
+            // INTERACTION
+            // ──────────────────────────────────
+            canvas.addEventListener("mousemove", (e) => {
+                if (!gState) return;
+                const rect = canvas.getBoundingClientRect();
+                const mx = e.clientX - rect.left;
+                const my = e.clientY - rect.top;
+
+                // Find nearest cultivator within threshold
+                let nearest = null;
+                let nearestDist = Infinity;
+                const threshold = gCanvasScale * 3;
+
+                if (gShowCultivators && gState.cultivators) {
+                    for (const c of gState.cultivators) {
+                        const { cx, cy } = gridToCanvas(c.x, c.y);
+                        const dx = mx - cx,
+                            dy = my - cy;
+                        const dist = Math.sqrt(dx * dx + dy * dy);
+                        if (dist < threshold && dist < nearestDist) {
+                            nearestDist = dist;
+                            nearest = c;
+                        }
+                    }
+                }
+
+                gHoveredAgent = nearest;
+                const tt = tooltip;
+
+                if (nearest) {
+                    const realmName = REALM_LEVEL_NAMES[nearest.r] || "未知";
+                    const strategyName = STRATEGY_NAMES[nearest.st] || "—";
+                    const sectName =
+                        nearest.si >= 0 ? SECT_NAMES[nearest.si] : "散修";
+                    const realmColor = REALM_COLORS[nearest.r] || "#888";
+
+                    tt.style.display = "block";
+                    tt.innerHTML = `
+      <div class="tt-name" style="color:${realmColor}">#${nearest.id} ${realmName}</div>
+      <div class="tt-row"><span class="tt-label">宗门</span><span>${sectName}</span></div>
+      <div class="tt-row"><span class="tt-label">策略</span><span>${strategyName}</span></div>
+      <div class="tt-row"><span class="tt-label">灵气</span><span>${(nearest.qf * 100).toFixed(0)}%</span></div>
+      <div class="tt-row"><span class="tt-label">战力</span><span>${nearest.cp.toFixed(1)}</span></div>
+      <div class="tt-row"><span class="tt-label">坐标</span><span>(${nearest.x}, ${nearest.y})</span></div>
+      <div style="margin-top:4px;font-size:10px;color:var(--accent)">点击以追踪</div>
+    `;
+
+                    // Position tooltip
+                    const ttRect = tt.getBoundingClientRect();
+                    let tx = e.clientX + 14,
+                        ty = e.clientY - 10;
+                    if (tx + ttRect.width > window.innerWidth)
+                        tx = e.clientX - ttRect.width - 14;
+                    if (ty + ttRect.height > window.innerHeight)
+                        ty = e.clientY - ttRect.height - 10;
+                    tt.style.left = tx + "px";
+                    tt.style.top = ty + "px";
+                } else {
+                    tt.style.display = "none";
+                }
+            });
+
+            canvas.addEventListener("mouseleave", () => {
+                tooltip.style.display = "none";
+                gHoveredAgent = null;
+            });
+
+            canvas.addEventListener("click", (e) => {
+                if (!gHoveredAgent) return;
+                trackAgent(gHoveredAgent.id);
+            });
+
+            // ──────────────────────────────────
+            // API CALLS
+            // ──────────────────────────────────
+            async function apiCall(url, method = "GET", body = null) {
+                const opts = { method, headers: {} };
+                if (body) {
+                    opts.headers["Content-Type"] = "application/json";
+                    opts.body = JSON.stringify(body);
+                }
+                const resp = await fetch(url, opts);
+                return resp.json();
+            }
+
+            async function togglePause() {
+                if (gPaused) {
+                    await apiCall("/api/resume", "POST");
+                } else {
+                    await apiCall("/api/pause", "POST");
+                }
+            }
+
+            async function doStep() {
+                await apiCall("/api/step", "POST");
+            }
+
+            async function setSpeed(speed) {
+                await apiCall("/api/speed", "POST", { speed });
+            }
+
+            async function trackAgent(id) {
+                await apiCall("/api/track", "POST", { agentId: id });
+            }
+
+            async function untrackAgent(id) {
+                await apiCall("/api/untrack", "POST", { agentId: id });
+            }
+
+            async function clearAllTracking() {
+                if (!gState || !gState.tracked) return;
+                for (const t of gState.tracked) {
+                    await apiCall("/api/untrack", "POST", { agentId: t.id });
+                }
+            }
+
+            // ──────────────────────────────────
+            // SSE CONNECTION
+            // ──────────────────────────────────
+            function connectSSE() {
+                const es = new EventSource("/api/stream");
+                es.onmessage = (event) => {
+                    try {
+                        const snapshot = JSON.parse(event.data);
+                        clearHeatmapCache();
+                        render(snapshot);
+                    } catch (err) {
+                        console.error("Failed to parse SSE data:", err);
+                    }
+                };
+                es.onerror = () => {
+                    console.warn("SSE connection lost, reconnecting in 2s...");
+                    es.close();
+                    setTimeout(connectSSE, 2000);
+                };
+            }
+
+            // ──────────────────────────────────
+            // EVENT HANDLERS
+            // ──────────────────────────────────
+            document
+                .getElementById("btn-pause")
+                .addEventListener("click", togglePause);
+            document
+                .getElementById("btn-step")
+                .addEventListener("click", doStep);
+            document
+                .getElementById("btn-clear-track")
+                .addEventListener("click", clearAllTracking);
+            document
+                .getElementById("speed-select")
+                .addEventListener("change", (e) => {
+                    setSpeed(parseInt(e.target.value));
+                });
+
+            // View mode toggles
+            document
+                .getElementById("ol-spirit")
+                .addEventListener("change", function () {
+                    gViewMode = this.checked ? SPIRIT_HEAT : MORTAL_HEAT;
+                    clearHeatmapCache();
+                    if (gState) {
+                        render(gState);
+                    }
+                });
+            document
+                .getElementById("ol-features")
+                .addEventListener("change", function () {
+                    gShowFeatures = this.checked;
+                    if (gState) render(gState);
+                });
+            document
+                .getElementById("ol-cultivators")
+                .addEventListener("change", function () {
+                    gShowCultivators = this.checked;
+                    if (gState) render(gState);
+                });
+
+            // Tab switching
+            document.querySelectorAll("#tab-bar .tab-btn").forEach((btn) => {
+                btn.addEventListener("click", () => {
+                    document
+                        .querySelectorAll("#tab-bar .tab-btn")
+                        .forEach((b) => b.classList.remove("active"));
+                    document
+                        .querySelectorAll("#tab-content .tab-panel")
+                        .forEach((p) => p.classList.remove("active"));
+                    btn.classList.add("active");
+                    document
+                        .getElementById("tab-" + btn.dataset.tab)
+                        .classList.add("active");
+                    // Redraw trend chart when switching to trends tab
+                    if (btn.dataset.tab === "trends") drawTrendChart();
+                });
+            });
+
+            // Window resize
+            window.addEventListener("resize", () => {
+                if (gState) render(gState);
+            });
+
+            // ──────────────────────────────────
+            // INIT
+            // ──────────────────────────────────
+            connectSSE();
+        </script>
+    </body>
+</html>
