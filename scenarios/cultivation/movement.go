@@ -140,7 +140,7 @@ func moveCultivator(
 
 func bestAdjacentSpiritPosition(env *engine.Grid, x, y, gridW, gridH int) (int, int, bool) {
 	bestX, bestY := x, y
-	bestSpirit := env.Env0(x, y)
+	bestScore := cellResourceValue(env, x, y)
 
 	for dy := -1; dy <= 1; dy++ {
 		for dx := -1; dx <= 1; dx++ {
@@ -149,10 +149,10 @@ func bestAdjacentSpiritPosition(env *engine.Grid, x, y, gridW, gridH int) (int, 
 			}
 			nx := (x + dx + gridW) % gridW
 			ny := (y + dy + gridH) % gridH
-			sp := env.Env0(nx, ny)
-			if sp > bestSpirit {
+			score := cellResourceValue(env, nx, ny)
+			if score > bestScore {
 				bestX, bestY = nx, ny
-				bestSpirit = sp
+				bestScore = score
 			}
 		}
 	}
@@ -203,14 +203,74 @@ func spiritSeekProbability(attrs engine.AttrBag) float64 {
 }
 
 func movementProbability(env *engine.Grid, x, y int) float64 {
-	prob := 1 - cellSpiritFraction(env, x, y)
+	prob := 1 - cellSettlementQuality(env, x, y)
 	if prob < 0 {
 		return 0
+	}
+	if prob < 0.05 && !isHighPotentialCell(env, x, y) {
+		prob = 0.05
 	}
 	if prob > 1 {
 		return 1
 	}
 	return prob
+}
+
+func cellSettlementQuality(env *engine.Grid, x, y int) float64 {
+	score := cellResourceValue(env, x, y)
+	if score > 1 {
+		return 1
+	}
+	if score < 0 {
+		return 0
+	}
+	return score
+}
+
+func cellResourceValue(env *engine.Grid, x, y int) float64 {
+	cell := env.Cells[y*env.Width+x]
+	return resourceValue(cell.Env0, cell.Env1, cell.Env2, DefaultScenarioConfig())
+}
+
+func resourceValue(spirit, maxSpirit, regen float64, cfg ScenarioConfig) float64 {
+	current := spirit / cfg.SpiritMax
+	if current < 0 {
+		current = 0
+	}
+	if current > 1 {
+		current = 1
+	}
+
+	capacity := 0.0
+	if cfg.BlessedLandMaxBonus > 0 {
+		capacity = (maxSpirit - cfg.SpiritMax) / cfg.BlessedLandMaxBonus
+	}
+	if capacity < 0 {
+		capacity = 0
+	}
+	if capacity > 1 {
+		capacity = 1
+	}
+
+	regenScore := 0.0
+	if cfg.BlessedLandRegenBonus > 0 {
+		regenScore = (regen - cfg.SpiritRegenRate) / cfg.BlessedLandRegenBonus
+	}
+	if regenScore < 0 {
+		regenScore = 0
+	}
+	if regenScore > 1 {
+		regenScore = 1
+	}
+
+	return current + 0.55*capacity + 0.35*regenScore
+}
+
+func isHighPotentialCell(env *engine.Grid, x, y int) bool {
+	cfg := DefaultScenarioConfig()
+	cell := env.Cells[y*env.Width+x]
+	return cell.Env1 >= cfg.SpiritMax+cfg.SpiritSpringMaxBonus ||
+		cell.Env2 >= cfg.SpiritRegenRate+cfg.SpiritSpringRegenBonus
 }
 
 func cellSpiritFraction(env *engine.Grid, x, y int) float64 {

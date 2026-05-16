@@ -227,6 +227,82 @@ func TestDefaultBreakthroughThresholdsMatchStrategy(t *testing.T) {
 	}
 }
 
+func TestSpiritGradesScaleCultivationAndBreakthroughByCellSpirit(t *testing.T) {
+	cfg := DefaultScenarioConfig()
+	cases := []struct {
+		spirit           float64
+		name             string
+		cultivationMult  float64
+		breakthroughMult float64
+	}{
+		{spirit: 10, name: "下品", cultivationMult: 0.80, breakthroughMult: 0.85},
+		{spirit: 50, name: "中品", cultivationMult: 0.92, breakthroughMult: 0.95},
+		{spirit: 100, name: "上品", cultivationMult: 1.00, breakthroughMult: 1.00},
+		{spirit: 150, name: "极品", cultivationMult: 1.15, breakthroughMult: 1.10},
+		{spirit: 250, name: "天品", cultivationMult: 1.35, breakthroughMult: 1.25},
+	}
+
+	for _, tc := range cases {
+		grade := spiritGradeForSpirit(tc.spirit, cfg)
+		if grade.Name != tc.name {
+			t.Fatalf("spirit %.0f grade = %s, want %s", tc.spirit, grade.Name, tc.name)
+		}
+		if grade.CultSpeedMultiplier != tc.cultivationMult {
+			t.Fatalf("spirit %.0f cultivation multiplier = %v, want %v", tc.spirit, grade.CultSpeedMultiplier, tc.cultivationMult)
+		}
+		if grade.BreakthroughMultiplier != tc.breakthroughMult {
+			t.Fatalf("spirit %.0f breakthrough multiplier = %v, want %v", tc.spirit, grade.BreakthroughMultiplier, tc.breakthroughMult)
+		}
+	}
+}
+
+func TestCultivationAbsorptionUsesSpiritGradeMultiplier(t *testing.T) {
+	cfg := engine.DefaultEngineConfig()
+	cfg.GridWidth = 1
+	cfg.GridHeight = 1
+	cfg.NumWorkers = 1
+
+	w := engine.NewWorld(cfg)
+	w.Next.Env.SetEnv0(0, 0, 40)
+	w.Next.Env.SetEnv1(0, 0, 100)
+	w.Next.Env.SetEnv2(0, 0, DefaultScenarioConfig().SpiritRegenRate)
+	attrs := engine.NewAttrBag()
+	attrs.Num["realm"] = 1
+	attrs.Num["qi"] = 0
+	attrs.Num["cultivation_speed"] = 1
+	w.Next.Agents.Add("cultivator", 0, 0, attrs)
+
+	(&CultivationSystem{}).Tick(w)
+
+	scnCfg := DefaultScenarioConfig()
+	wantAbsorb := 40 * scnCfg.CultivationSpeed * DefaultRealms[0].CultSpeedMult * 0.80
+	gotQi := w.Next.Agents.Attrs[0].Num["qi"]
+	if math.Abs(gotQi-wantAbsorb) > 1e-12 {
+		t.Fatalf("absorbed qi = %v, want %v", gotQi, wantAbsorb)
+	}
+	if gotSpirit := w.Next.Env.Env0(0, 0); math.Abs(gotSpirit-(40-wantAbsorb)) > 1e-12 {
+		t.Fatalf("remaining cell spirit = %v, want %v", gotSpirit, 40-wantAbsorb)
+	}
+}
+
+func TestBreakthroughProbabilityUsesSpiritGradeMultiplier(t *testing.T) {
+	cfg := DefaultScenarioConfig()
+	rc := DefaultRealms[0]
+	attrs := engine.NewAttrBag()
+
+	low := breakthroughProbabilityWithSpiritGrade(rc, attrs, cfg, 0, spiritGradeBreakthroughMultiplier(10, cfg))
+	ordinary := breakthroughProbabilityWithSpiritGrade(rc, attrs, cfg, 0, spiritGradeBreakthroughMultiplier(100, cfg))
+	high := breakthroughProbabilityWithSpiritGrade(rc, attrs, cfg, 0, spiritGradeBreakthroughMultiplier(150, cfg))
+
+	wantOrdinary := rc.BreakthroughBase * cfg.LooseBreakthroughMultiplier
+	if math.Abs(ordinary-wantOrdinary) > 1e-12 {
+		t.Fatalf("ordinary spirit breakthrough probability = %v, want %v", ordinary, wantOrdinary)
+	}
+	if !(low < ordinary && high > ordinary) {
+		t.Fatalf("quality-scaled breakthrough probabilities low/ordinary/high = %v/%v/%v, want ordered", low, ordinary, high)
+	}
+}
+
 func TestSectBreakthroughProbabilityBonus(t *testing.T) {
 	cfg := DefaultScenarioConfig()
 	rc := DefaultRealms[0]
@@ -1078,8 +1154,8 @@ func TestMovementProbabilityScalesWithCellSpirit(t *testing.T) {
 	env.SetEnv1(0, 0, 100)
 
 	env.SetEnv0(0, 0, 100)
-	if got := movementProbability(env, 0, 0); got != 0 {
-		t.Fatalf("movement probability at full spirit = %v, want 0", got)
+	if got := movementProbability(env, 0, 0); got != 0.05 {
+		t.Fatalf("movement probability at full ordinary spirit = %v, want 0.05 exploration floor", got)
 	}
 
 	env.SetEnv0(0, 0, 25)
@@ -1090,6 +1166,34 @@ func TestMovementProbabilityScalesWithCellSpirit(t *testing.T) {
 	env.SetEnv0(0, 0, 0)
 	if got := movementProbability(env, 0, 0); got != 1 {
 		t.Fatalf("movement probability at zero spirit = %v, want 1", got)
+	}
+}
+
+func TestHighPotentialCoreRetainsCultivatorsEvenWhenPartlyDrained(t *testing.T) {
+	cfg := DefaultScenarioConfig()
+	env := engine.NewGrid(1, 1)
+	env.SetEnv0(0, 0, 20)
+	env.SetEnv1(0, 0, cfg.SpiritMax+cfg.BlessedLandMaxBonus)
+	env.SetEnv2(0, 0, cfg.SpiritRegenRate+cfg.BlessedLandRegenBonus)
+
+	if got := movementProbability(env, 0, 0); got != 0 {
+		t.Fatalf("movement probability in drained high-potential core = %v, want 0", got)
+	}
+}
+
+func TestAdjacentResourceSearchPrefersHighPotentialCore(t *testing.T) {
+	cfg := DefaultScenarioConfig()
+	env := engine.NewGrid(2, 1)
+	env.SetEnv0(0, 0, cfg.SpiritMax)
+	env.SetEnv1(0, 0, cfg.SpiritMax)
+	env.SetEnv2(0, 0, cfg.SpiritRegenRate)
+	env.SetEnv0(1, 0, 20)
+	env.SetEnv1(1, 0, cfg.SpiritMax+cfg.BlessedLandMaxBonus)
+	env.SetEnv2(1, 0, cfg.SpiritRegenRate+cfg.BlessedLandRegenBonus)
+
+	x, y, ok := bestAdjacentSpiritPosition(env, 0, 0, 2, 1)
+	if !ok || x != 1 || y != 0 {
+		t.Fatalf("best adjacent = (%d,%d,%v), want high-potential core at (1,0,true)", x, y, ok)
 	}
 }
 

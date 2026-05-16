@@ -8,6 +8,8 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -24,6 +26,9 @@ type DashboardConfig struct {
 	HeatmapScale     int // downsample factor (e.g., 5 means 200x200 from 1000x1000)
 	UpdateEveryTicks int // send state every N ticks
 	MaxEvents        int // max notable events to keep
+	AutoPauseAfter   time.Duration
+	AnalysisEvery    time.Duration
+	AnalysisDir      string
 }
 
 // DefaultDashboardConfig returns sensible defaults.
@@ -33,6 +38,9 @@ func DefaultDashboardConfig() DashboardConfig {
 		HeatmapScale:     5,
 		UpdateEveryTicks: 1,
 		MaxEvents:        100,
+		AutoPauseAfter:   5 * time.Minute,
+		AnalysisEvery:    time.Minute,
+		AnalysisDir:      "output/analysis",
 	}
 }
 
@@ -92,6 +100,9 @@ func NewDashboard(w *engine.World, cfg DashboardConfig) *Dashboard {
 	}
 	if cfg.Port < 1 {
 		cfg.Port = 8080
+	}
+	if cfg.AnalysisDir == "" {
+		cfg.AnalysisDir = "output/analysis"
 	}
 	return &Dashboard{
 		world:        w,
@@ -155,12 +166,21 @@ func (d *Dashboard) simulationLoop() {
 	defer ticker.Stop()
 
 	ticksSinceUpdate := 0
+	lastWallTime := time.Now()
+	runElapsed := time.Duration(0)
+	nextAnalysisExport := d.cfg.AnalysisEvery
+	analysisExportCount := 0
+	autoPaused := false
 
 	for {
 		select {
 		case <-d.stopCh:
 			return
 		case <-ticker.C:
+			now := time.Now()
+			wallDelta := now.Sub(lastWallTime)
+			lastWallTime = now
+
 			d.mu.Lock()
 			isPaused := d.paused
 			d.mu.Unlock()
@@ -179,6 +199,7 @@ func (d *Dashboard) simulationLoop() {
 
 			// Advance simulation
 			d.world.Tick()
+			runElapsed += wallDelta
 
 			// Collect notable events
 			d.eventsMu.Lock()
@@ -198,6 +219,25 @@ func (d *Dashboard) simulationLoop() {
 				d.broadcast(snapshot)
 			}
 
+			if d.cfg.AnalysisEvery > 0 {
+				for runElapsed >= nextAnalysisExport {
+					analysisExportCount++
+					if err := d.exportAnalysisSnapshot(analysisExportCount, runElapsed); err != nil {
+						log.Printf("analysis export failed: %v", err)
+					}
+					nextAnalysisExport += d.cfg.AnalysisEvery
+				}
+			}
+
+			if d.cfg.AutoPauseAfter > 0 && !autoPaused && runElapsed >= d.cfg.AutoPauseAfter {
+				autoPaused = true
+				d.mu.Lock()
+				d.paused = true
+				d.mu.Unlock()
+				log.Printf("Dashboard auto-paused after %s of active runtime", d.cfg.AutoPauseAfter)
+				d.broadcast(d.buildSnapshot())
+			}
+
 			// Throttle to target speed
 			if isPaused {
 				// After single step, re-enter pause
@@ -207,6 +247,36 @@ func (d *Dashboard) simulationLoop() {
 			}
 		}
 	}
+}
+
+func (d *Dashboard) exportAnalysisSnapshot(index int, runElapsed time.Duration) error {
+	if err := os.MkdirAll(d.cfg.AnalysisDir, 0755); err != nil {
+		return err
+	}
+
+	tick := d.world.Clock.Tick
+	if len(d.world.Stats.Snapshots) == 0 ||
+		d.world.Stats.Snapshots[len(d.world.Stats.Snapshots)-1].Tick != tick {
+		d.world.Stats.Snapshot(d.world.Curr, d.world.Curr.Env, tick, d.world.Clock.Year())
+	}
+
+	minute := int(runElapsed.Round(time.Second) / time.Minute)
+	if minute < index {
+		minute = index
+	}
+	base := fmt.Sprintf("analysis_%03dm_tick_%08d", minute, tick)
+	jsonPath := filepath.Join(d.cfg.AnalysisDir, base+".json")
+	if err := os.WriteFile(jsonPath, d.buildSnapshot(), 0644); err != nil {
+		return err
+	}
+
+	csvPath := filepath.Join(d.cfg.AnalysisDir, base+".csv")
+	if err := d.world.Stats.ExportCSV(csvPath); err != nil {
+		return err
+	}
+
+	log.Printf("analysis exported: %s and %s", jsonPath, csvPath)
+	return nil
 }
 
 // --- State Snapshot ---

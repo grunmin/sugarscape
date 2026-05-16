@@ -57,18 +57,21 @@ func (s *CultivationSystem) Tick(w *engine.World) {
 				attrs.Num["breakthrough_cooldown"]--
 			}
 
+			x, y := agents.X[i], agents.Y[i]
+			cellIdx := y*gridW + x
+			breakthroughSpiritMult := 1.0
 			if attrs.Num["moved_this_tick"] != 1 {
 				capacity := qiMax - attrs.Num["qi"]
 				if capacity < 0 {
 					capacity = 0
 				}
-				x, y := agents.X[i], agents.Y[i]
-				cellIdx := y*gridW + x
 				cellLock := &s.cellLocks[cellIdx%len(s.cellLocks)]
 				cellLock.Lock()
-				spirit := env.Cells[cellIdx].Env0
-				maxSpirit := env.Cells[cellIdx].Env1
-				baseAbsorb := spirit * attrs.Num["cultivation_speed"] * cfg.CultivationSpeed
+				cellBefore := env.Cells[cellIdx]
+				spirit := cellBefore.Env0
+				gradeCultMult := spiritGradeCultivationMultiplier(spirit, cfg)
+				breakthroughSpiritMult = spiritGradeBreakthroughMultiplier(spirit, cfg)
+				baseAbsorb := spirit * attrs.Num["cultivation_speed"] * cfg.CultivationSpeed * gradeCultMult
 				absorb := baseAbsorb * rc.CultSpeedMult
 				if absorb > spirit {
 					absorb = spirit
@@ -83,9 +86,9 @@ func (s *CultivationSystem) Tick(w *engine.World) {
 
 				// Rumor verification: if at a rumored location, check the observed
 				// spirit before this cultivator consumes from the cell.
-				verifyRumorAtLocation(attrs, x, y, spirit, maxSpirit)
+				verifyRumorAtCell(attrs, x, y, cellBefore, cfg)
 				// Rumor creation: if this is a notably high-spirit cell, remember it.
-				createRumor(attrs, x, y, spirit, maxSpirit)
+				createRumorFromCell(attrs, x, y, cellBefore, cfg)
 			}
 
 			if attrs.Num["qi"] > qiMax {
@@ -102,8 +105,11 @@ func (s *CultivationSystem) Tick(w *engine.World) {
 				attrs.Num["breakthrough_cooldown"] <= 0 &&
 				attrs.Num["breakthrough_sustain_ticks"] >= float64(breakthroughSustainTicks(cfg, realm)) {
 
+				if attrs.Num["moved_this_tick"] == 1 {
+					breakthroughSpiritMult = s.breakthroughSpiritMultiplierAt(env, cellIdx, cfg)
+				}
 				mentors := oneRealmHigherMentors(*attrs, realm, sectRealmCounts)
-				if rng.Float64() < breakthroughProbability(rc, *attrs, cfg, mentors) {
+				if rng.Float64() < breakthroughProbabilityWithSpiritGrade(rc, *attrs, cfg, mentors, breakthroughSpiritMult) {
 					newRealm := realm + 1
 					newRC := GetRealm(newRealm)
 					newQiMax := cfg.BaseQi * newRC.QiMultiplier
@@ -174,6 +180,14 @@ func (s *CultivationSystem) Tick(w *engine.World) {
 	}
 }
 
+func (s *CultivationSystem) breakthroughSpiritMultiplierAt(env *engine.Grid, cellIdx int, cfg ScenarioConfig) float64 {
+	cellLock := &s.cellLocks[cellIdx%len(s.cellLocks)]
+	cellLock.Lock()
+	spirit := env.Cells[cellIdx].Env0
+	cellLock.Unlock()
+	return spiritGradeBreakthroughMultiplier(spirit, cfg)
+}
+
 func randomLifespan(rng *engine.RNG, rc RealmConfig) float64 {
 	return rc.Lifespan * (0.6 + rng.Float64()*0.4)
 }
@@ -199,7 +213,51 @@ func breakthroughSustainTicks(cfg ScenarioConfig, realm int) int {
 	return cfg.BreakthroughSustainTicks[len(cfg.BreakthroughSustainTicks)-1]
 }
 
+func spiritGradeForSpirit(spirit float64, cfg ScenarioConfig) SpiritGradeConfig {
+	if len(DefaultSpiritGrades) == 0 {
+		return SpiritGradeConfig{
+			Name:                   "默认",
+			Level:                  1,
+			CultSpeedMultiplier:    1,
+			BreakthroughMultiplier: 1,
+		}
+	}
+
+	unit := cfg.SpiritMax
+	if unit <= 0 {
+		unit = 1
+	}
+	ratio := spirit / unit
+	grade := DefaultSpiritGrades[0]
+	for _, candidate := range DefaultSpiritGrades {
+		if ratio >= candidate.MinSpiritRatio {
+			grade = candidate
+		}
+	}
+	return grade
+}
+
+func spiritGradeCultivationMultiplier(spirit float64, cfg ScenarioConfig) float64 {
+	mult := spiritGradeForSpirit(spirit, cfg).CultSpeedMultiplier
+	if mult <= 0 {
+		return 1
+	}
+	return mult
+}
+
+func spiritGradeBreakthroughMultiplier(spirit float64, cfg ScenarioConfig) float64 {
+	mult := spiritGradeForSpirit(spirit, cfg).BreakthroughMultiplier
+	if mult <= 0 {
+		return 1
+	}
+	return mult
+}
+
 func breakthroughProbability(rc RealmConfig, attrs engine.AttrBag, cfg ScenarioConfig, oneRealmHigherMentors int) float64 {
+	return breakthroughProbabilityWithSpiritGrade(rc, attrs, cfg, oneRealmHigherMentors, 1)
+}
+
+func breakthroughProbabilityWithSpiritGrade(rc RealmConfig, attrs engine.AttrBag, cfg ScenarioConfig, oneRealmHigherMentors int, spiritGradeMultiplier float64) float64 {
 	prob := rc.BreakthroughBase
 	sect := attrs.Str["sect"]
 	if sect == "" {
@@ -209,6 +267,7 @@ func breakthroughProbability(rc RealmConfig, attrs engine.AttrBag, cfg ScenarioC
 		prob *= sectTraitForName(sect).BreakthroughMultiplier
 		prob *= mentorBreakthroughMultiplier(oneRealmHigherMentors, cfg)
 	}
+	prob *= spiritGradeMultiplier
 	if prob > 1 {
 		return 1
 	}

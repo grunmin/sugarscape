@@ -23,20 +23,25 @@ const (
 
 // createRumor records a high-spirit location the cultivator has discovered.
 func createRumor(attrs *engine.AttrBag, x, y int, spirit, maxSpirit float64) {
-	if maxSpirit <= 0 {
+	cfg := DefaultScenarioConfig()
+	createRumorWithStrength(attrs, x, y, spirit, cellResourceQuality(spirit, maxSpirit, cfg.SpiritRegenRate, cfg))
+}
+
+func createRumorFromCell(attrs *engine.AttrBag, x, y int, cell engine.Cell, cfg ScenarioConfig) {
+	createRumorWithStrength(attrs, x, y, cell.Env0, cellResourceQuality(cell.Env0, cell.Env1, cell.Env2, cfg))
+}
+
+func createRumorWithStrength(attrs *engine.AttrBag, x, y int, spirit, strength float64) {
+	if strength < 0.6 {
 		return
 	}
-	frac := spirit / maxSpirit
-	if frac < 0.6 {
-		return
-	}
-	if frac <= attrs.Num[rumorKeyStrength] {
+	if strength <= attrs.Num[rumorKeyStrength] {
 		return
 	}
 
 	attrs.Num[rumorKeyX] = float64(x)
 	attrs.Num[rumorKeyY] = float64(y)
-	attrs.Num[rumorKeyStrength] = frac
+	attrs.Num[rumorKeyStrength] = strength
 	attrs.Num[rumorKeySpirit] = spirit
 }
 
@@ -104,6 +109,15 @@ func decayRumor(attrs *engine.AttrBag) {
 // verifyRumorAtLocation clears a stale rumor only when the cultivator is
 // actually standing at the rumored location.
 func verifyRumorAtLocation(attrs *engine.AttrBag, x, y int, actualSpirit, maxSpirit float64) {
+	cfg := DefaultScenarioConfig()
+	verifyRumorAtLocationWithQuality(attrs, x, y, cellResourceQuality(actualSpirit, maxSpirit, cfg.SpiritRegenRate, cfg))
+}
+
+func verifyRumorAtCell(attrs *engine.AttrBag, x, y int, cell engine.Cell, cfg ScenarioConfig) {
+	verifyRumorAtLocationWithQuality(attrs, x, y, cellResourceQuality(cell.Env0, cell.Env1, cell.Env2, cfg))
+}
+
+func verifyRumorAtLocationWithQuality(attrs *engine.AttrBag, x, y int, actualQuality float64) {
 	rumorSpirit := attrs.Num[rumorKeySpirit]
 	if rumorSpirit <= 0 {
 		return
@@ -114,12 +128,20 @@ func verifyRumorAtLocation(attrs *engine.AttrBag, x, y int, actualSpirit, maxSpi
 		return
 	}
 
-	if maxSpirit <= 0 {
-		maxSpirit = 1
-	}
-	if actualSpirit/maxSpirit < 0.4 && rumorSpirit/maxSpirit > 0.6 {
+	if actualQuality < 0.4 && attrs.Num[rumorKeyStrength] > 0.6 {
 		clearRumor(attrs)
 	}
+}
+
+func cellResourceQuality(spirit, maxSpirit, regen float64, cfg ScenarioConfig) float64 {
+	score := resourceValue(spirit, maxSpirit, regen, cfg)
+	if score > 1 {
+		return 1
+	}
+	if score < 0 {
+		return 0
+	}
+	return score
 }
 
 func rumorLocation(attrs *engine.AttrBag) (int, int) {

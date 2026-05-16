@@ -13,12 +13,29 @@ type RealmConfig struct {
 	DetectRange      int     // detection range in cells (= realm level)
 }
 
+// SpiritGradeConfig defines how current cell spirit density maps to a spirit quality tier.
+type SpiritGradeConfig struct {
+	Name                   string
+	Level                  int
+	MinSpiritRatio         float64 // spirit / SpiritMax
+	CultSpeedMultiplier    float64
+	BreakthroughMultiplier float64
+}
+
 var DefaultRealms = []RealmConfig{
 	{Name: "练气", Level: 1, QiMultiplier: 2, CombatMultiplier: 1, Lifespan: 120, BreakthroughBase: 0.10, CultSpeedMult: 1.0, MoveSpeed: 1.0, DetectRange: 1},
 	{Name: "筑基", Level: 2, QiMultiplier: 6, CombatMultiplier: 3, Lifespan: 250, BreakthroughBase: 0.05, CultSpeedMult: 1.5, MoveSpeed: 1.3, DetectRange: 2},
 	{Name: "金丹", Level: 3, QiMultiplier: 20, CombatMultiplier: 10, Lifespan: 500, BreakthroughBase: 0.03, CultSpeedMult: 2.0, MoveSpeed: 1.6, DetectRange: 3},
 	{Name: "元婴", Level: 4, QiMultiplier: 60, CombatMultiplier: 30, Lifespan: 1000, BreakthroughBase: 0.02, CultSpeedMult: 2.5, MoveSpeed: 1.9, DetectRange: 4},
 	{Name: "化神", Level: 5, QiMultiplier: 200, CombatMultiplier: 100, Lifespan: 3000, BreakthroughBase: 0.00, CultSpeedMult: 3.0, MoveSpeed: 2.2, DetectRange: 5},
+}
+
+var DefaultSpiritGrades = []SpiritGradeConfig{
+	{Name: "下品", Level: 1, MinSpiritRatio: 0.0, CultSpeedMultiplier: 0.80, BreakthroughMultiplier: 0.85},
+	{Name: "中品", Level: 2, MinSpiritRatio: 0.5, CultSpeedMultiplier: 0.92, BreakthroughMultiplier: 0.95},
+	{Name: "上品", Level: 3, MinSpiritRatio: 1.0, CultSpeedMultiplier: 1.00, BreakthroughMultiplier: 1.00},
+	{Name: "极品", Level: 4, MinSpiritRatio: 1.5, CultSpeedMultiplier: 1.15, BreakthroughMultiplier: 1.10},
+	{Name: "天品", Level: 5, MinSpiritRatio: 2.5, CultSpeedMultiplier: 1.35, BreakthroughMultiplier: 1.25},
 }
 
 // ScenarioConfig holds all configurable parameters for the cultivation world.
