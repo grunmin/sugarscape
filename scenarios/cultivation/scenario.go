@@ -105,16 +105,7 @@ func Setup(w *engine.World) {
 				}
 			}
 
-			// Population density based on distance to tribe center.
-			var densityMult float64
-			r := minDist
-			if r < 9 {
-				densityMult = 5.0 // core
-			} else if r < 100 {
-				densityMult = 2.0 // inner
-			} else {
-				densityMult = 0.5 // periphery
-			}
+			densityMult := mortalDensityMultiplier(minDist, cfg)
 
 			// Add noise.
 			densityMult *= 0.7 + w.RNG.Float64()*0.6
@@ -152,6 +143,23 @@ func Setup(w *engine.World) {
 }
 
 // --- Math helpers ---
+
+func mortalDensityMultiplier(distSq float64, cfg ScenarioConfig) float64 {
+	coreRadiusSq := float64(cfg.MortalCoreRadius * cfg.MortalCoreRadius)
+	innerRadiusSq := float64(cfg.MortalInnerRadius * cfg.MortalInnerRadius)
+	outerRadiusSq := float64(cfg.MortalOuterRadius * cfg.MortalOuterRadius)
+
+	if cfg.MortalCoreRadius > 0 && distSq < coreRadiusSq {
+		return cfg.MortalCoreDensityMultiplier
+	}
+	if cfg.MortalInnerRadius > 0 && distSq < innerRadiusSq {
+		return cfg.MortalInnerDensityMultiplier
+	}
+	if cfg.MortalOuterRadius > 0 && distSq < outerRadiusSq {
+		return cfg.MortalOuterDensityMultiplier
+	}
+	return cfg.MortalWildernessDensityMultiplier
+}
 
 // applySpiritVein places an organic, winding spirit vein across the grid.
 // Uses continuous random angles with gentle curvature (wobble) instead of

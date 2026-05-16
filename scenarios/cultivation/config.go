@@ -26,6 +26,13 @@ type ScenarioConfig struct {
 	// Mortal world
 	MortalBaseDensity                  float64 // average mortals per cell
 	NumTribes                          int     // number of tribal centers
+	MortalCoreRadius                   int
+	MortalInnerRadius                  int
+	MortalOuterRadius                  int
+	MortalCoreDensityMultiplier        float64
+	MortalInnerDensityMultiplier       float64
+	MortalOuterDensityMultiplier       float64
+	MortalWildernessDensityMultiplier  float64
 	MortalLifespan                     float64 // years
 	MortalConvChance                   float64 // lifetime probability of becoming cultivator
 	MortalBirthRateMin                 float64 // multiplier on base mortality rate
@@ -33,6 +40,8 @@ type ScenarioConfig struct {
 	ConversionGlobalSpiritThresholdAvg float64
 	ConversionLocalSpiritThreshold     float64
 	ConversionSpiritCheckEvery         int
+	ConversionSpawnSpiritFloor         float64
+	ConversionSpawnSpiritExponent      float64
 	// Spirit density
 	BaseSpiritDensity      float64
 	SpiritRegenRate        float64
@@ -85,6 +94,13 @@ func DefaultScenarioConfig() ScenarioConfig {
 	return ScenarioConfig{
 		MortalBaseDensity:                  100,
 		NumTribes:                          200,
+		MortalCoreRadius:                   3,
+		MortalInnerRadius:                  10,
+		MortalOuterRadius:                  18,
+		MortalCoreDensityMultiplier:        8.0,
+		MortalInnerDensityMultiplier:       3.0,
+		MortalOuterDensityMultiplier:       0.6,
+		MortalWildernessDensityMultiplier:  0.0,
 		MortalLifespan:                     70,
 		MortalConvChance:                   0.001,
 		MortalBirthRateMin:                 0.9,
@@ -92,6 +108,8 @@ func DefaultScenarioConfig() ScenarioConfig {
 		ConversionGlobalSpiritThresholdAvg: 20,
 		ConversionLocalSpiritThreshold:     10,
 		ConversionSpiritCheckEvery:         20,
+		ConversionSpawnSpiritFloor:         0.02,
+		ConversionSpawnSpiritExponent:      3.0,
 		BaseSpiritDensity:                  30,
 		SpiritRegenRate:                    0.02,
 		SpiritMax:                          100,

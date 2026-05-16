@@ -131,13 +131,14 @@
 - 初始凡人总数 = `1000×1000×100 = 1 亿`。
 - `[MortalBaseDensity=100]`，每格平均 100 人。
 - `[NumTribes=200]`，随机生成 200 个部落中心。
-- 每格人口密度按最近部落中心距离衰减：
-  - 距离 `<3` 格：密度为基数的 5 倍。
-  - `3≤距离<10` 格：密度为基数的 2 倍。
-  - 距离 `≥10` 格：密度为基数的 0.5 倍。
+- 每格人口密度按最近部落中心距离衰减；广袤荒野默认无人烟：
+  - `[MortalCoreRadius=3]`，距离 `<3` 格：密度为基数的 `[MortalCoreDensityMultiplier=8.0]` 倍。
+  - `[MortalInnerRadius=10]`，`3≤距离<10` 格：密度为基数的 `[MortalInnerDensityMultiplier=3.0]` 倍。
+  - `[MortalOuterRadius=18]`，`10≤距离<18` 格：密度为基数的 `[MortalOuterDensityMultiplier=0.6]` 倍。
+  - 距离 `≥18` 格：密度为基数的 `[MortalWildernessDensityMultiplier=0.0]` 倍，即无人荒野。
   - 每格附加 `±30%` 随机噪声。
 - 人口分布与灵气分布独立生成。
-- 生成后按总量归一化，使世界总人口精确匹配 `格子数 × MortalBaseDensity`。
+- 生成后按总量归一化，使世界总人口精确匹配 `格子数 × MortalBaseDensity`；归一化只改变有人区密度，不会给无人荒野补人口。
 
 ### 3.2 凡人生死
 
@@ -150,7 +151,7 @@
   - 实际死亡 = 期望死亡 × `0.8~1.2` 随机波动。
   - 出生 = 当前总人口 × 基准死亡率 × `[MortalBirthRateMin=0.9] ~ [MortalBirthRateMax=1.2]`。
   - 总人口长期趋势为缓慢增长，但受随机波动影响。
-- 各格人口分布作为凡人转化采样权重保留；普通生死不会逐格重塑人口分布。
+- 各格人口分布作为凡人转化采样权重的一部分保留；普通生死不会逐格重塑人口分布。
 
 ### 3.3 凡人转化为修仙者
 
@@ -166,8 +167,14 @@
 - 本地灵气抑制：
   - `[ConversionLocalSpiritThreshold=10]`
   - 候选格灵气低于 10 时，候选转化再乘以 `所在格灵气 / 10`
+- 出生位置灵气偏好：
+  - 候选位置不再只按凡人人口采样，而是按 `凡人人口 × 灵气适宜度` 采样。
+  - `灵气适宜度 = ConversionSpawnSpiritFloor + (1 - ConversionSpawnSpiritFloor) × (当前格灵气 / 全图当前最高灵气) ^ ConversionSpawnSpiritExponent`
+  - `[ConversionSpawnSpiritFloor=0.02]`，低灵气格保留 2% 的最低权重，避免完全归零。
+  - `[ConversionSpawnSpiritExponent=3.0]`，使用三次曲线放大高灵地优势，让新练气修士更明显聚集在灵泉、灵脉、洞天等高灵区域。
+  - 全图当前最高灵气按 `[ConversionSpiritCheckEvery=20]` tick 缓存刷新一次，避免每个转化候选都全图扫描。
 - 转化流程：
-  - 按格子凡人人口权重采样候选位置。
+  - 按 `凡人人口 × 灵气适宜度` 权重采样候选位置。
   - 若候选格本地灵气判定通过，该格凡人人口 `-1`。
   - 在该位置生成一名练气期修士。
   - 统计 `mortal_conversions +1`。

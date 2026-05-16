@@ -10,7 +10,9 @@ import (
 type MortalSystem struct {
 	maxMortalPop              float64
 	globalSpiritFactor        float64
+	maxSpawnSpirit            float64
 	lastGlobalSpiritCheckTick int64
+	lastSpawnSpiritCheckTick  int64
 }
 
 func (s *MortalSystem) Name() string  { return "MortalSystem" }
@@ -48,9 +50,10 @@ func (s *MortalSystem) Tick(w *engine.World) {
 		convs = int(env.TotalMortals())
 	}
 	recruitWeights := sectRecruitWeights(w.Next.Agents)
+	maxSpawnSpirit := s.conversionSpawnMaxSpirit(w, cfg)
 
 	for range convs {
-		sr := sampleMortalSpawn(rng, env, s.maxMortalPop)
+		sr := sampleMortalSpawn(rng, env, s.maxMortalPop, maxSpawnSpirit, cfg)
 		if env.Mortal(sr.x, sr.y) <= 0 {
 			continue
 		}
@@ -78,6 +81,18 @@ func (s *MortalSystem) conversionGlobalSpiritFactor(w *engine.World, cfg Scenari
 		s.lastGlobalSpiritCheckTick = w.Clock.Tick
 	}
 	return s.globalSpiritFactor
+}
+
+func (s *MortalSystem) conversionSpawnMaxSpirit(w *engine.World, cfg ScenarioConfig) float64 {
+	interval := cfg.ConversionSpiritCheckEvery
+	if interval < 1 {
+		interval = 1
+	}
+	if s.maxSpawnSpirit == 0 || w.Clock.Tick-s.lastSpawnSpiritCheckTick >= int64(interval) {
+		s.maxSpawnSpirit = maxCurrentSpirit(w.Next.Env)
+		s.lastSpawnSpiritCheckTick = w.Clock.Tick
+	}
+	return s.maxSpawnSpirit
 }
 
 func conversionLocalSpiritFactor(spirit float64, cfg ScenarioConfig) float64 {
@@ -111,12 +126,7 @@ func maxMortalPop(env *engine.Grid) float64 {
 	return maxPop
 }
 
-func sampleMortalSpawn(rng *engine.RNG, env *engine.Grid, maxPop float64) spawnReq {
-	if maxPop <= 0 {
-		maxPop = 1
-	}
-
-	// Find the maximum spirit density across all cells for normalization.
+func maxCurrentSpirit(env *engine.Grid) float64 {
 	maxSpirit := 0.0
 	for i := range env.Cells {
 		if env.Cells[i].Env0 > maxSpirit {
@@ -124,22 +134,54 @@ func sampleMortalSpawn(rng *engine.RNG, env *engine.Grid, maxPop float64) spawnR
 		}
 	}
 	if maxSpirit <= 0 {
+		return 1
+	}
+	return maxSpirit
+}
+
+func conversionSpawnSpiritFactor(spirit, maxSpirit float64, cfg ScenarioConfig) float64 {
+	floor := cfg.ConversionSpawnSpiritFloor
+	if floor < 0 {
+		floor = 0
+	}
+	if floor > 1 {
+		floor = 1
+	}
+	if maxSpirit <= 0 {
+		return floor
+	}
+	relative := spirit / maxSpirit
+	if relative < 0 {
+		relative = 0
+	}
+	if relative > 1 {
+		relative = 1
+	}
+	exponent := cfg.ConversionSpawnSpiritExponent
+	if exponent <= 0 {
+		exponent = 1
+	}
+	return floor + (1-floor)*math.Pow(relative, exponent)
+}
+
+func sampleMortalSpawn(rng *engine.RNG, env *engine.Grid, maxPop, maxSpirit float64, cfg ScenarioConfig) spawnReq {
+	if maxPop <= 0 {
+		maxPop = 1
+	}
+	if maxSpirit <= 0 {
 		maxSpirit = 1
 	}
 
-	// Rejection sampling with joint weight: mortal population × spirit density.
-	// This biases new cultivator spawns toward high-spirit areas, creating
-	// natural clustering over time.
+	// Rejection sampling with joint weight: mortal population × spirit suitability.
+	// The suitability curve is intentionally steep so new cultivators cluster
+	// around high-spirit regions instead of mirroring the broad mortal map.
 	for tries := 0; tries < 10000; tries++ {
 		idx := rng.Intn(len(env.Cells))
 		cell := &env.Cells[idx]
 		if cell.MortalPop <= 0 {
 			continue
 		}
-		// Joint weight: mortal density (for realistic demographics) × spirit factor.
-		// The spirit factor ranges from 0.3 (low spirit) to 1.0 (highest spirit),
-		// ensuring even low-spirit areas can still spawn occasionally.
-		spiritFactor := 0.3 + 0.7*(cell.Env0/maxSpirit)
+		spiritFactor := conversionSpawnSpiritFactor(cell.Env0, maxSpirit, cfg)
 		jointWeight := (cell.MortalPop / maxPop) * spiritFactor
 		if rng.Float64() <= jointWeight {
 			return spawnReq{x: idx % env.Width, y: idx / env.Width}

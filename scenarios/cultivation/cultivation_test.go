@@ -27,6 +27,26 @@ func TestSetupNormalizesMortalPopulation(t *testing.T) {
 	}
 }
 
+func TestMortalDensityLeavesWildernessEmpty(t *testing.T) {
+	cfg := DefaultScenarioConfig()
+
+	if got := mortalDensityMultiplier(0, cfg); got != cfg.MortalCoreDensityMultiplier {
+		t.Fatalf("core mortal density multiplier = %v, want %v", got, cfg.MortalCoreDensityMultiplier)
+	}
+	innerDistSq := float64(cfg.MortalCoreRadius*cfg.MortalCoreRadius + 1)
+	if got := mortalDensityMultiplier(innerDistSq, cfg); got != cfg.MortalInnerDensityMultiplier {
+		t.Fatalf("inner mortal density multiplier = %v, want %v", got, cfg.MortalInnerDensityMultiplier)
+	}
+	outerDistSq := float64(cfg.MortalInnerRadius*cfg.MortalInnerRadius + 1)
+	if got := mortalDensityMultiplier(outerDistSq, cfg); got != cfg.MortalOuterDensityMultiplier {
+		t.Fatalf("outer mortal density multiplier = %v, want %v", got, cfg.MortalOuterDensityMultiplier)
+	}
+	wildernessDistSq := float64(cfg.MortalOuterRadius*cfg.MortalOuterRadius + 1)
+	if got := mortalDensityMultiplier(wildernessDistSq, cfg); got != 0 {
+		t.Fatalf("wilderness mortal density multiplier = %v, want 0", got)
+	}
+}
+
 func TestSetupCreatesLayeredHighSpiritRegions(t *testing.T) {
 	cfg := engine.DefaultEngineConfig()
 	cfg.GridWidth = 80
@@ -833,6 +853,36 @@ func TestConversionSpiritFactors(t *testing.T) {
 	}
 	if got := conversionLocalSpiritFactor(5, cfg); got != 0.5 {
 		t.Fatalf("local conversion factor = %v, want 0.5", got)
+	}
+	if got := conversionSpawnSpiritFactor(0, 100, cfg); got != cfg.ConversionSpawnSpiritFloor {
+		t.Fatalf("zero-spirit spawn factor = %v, want floor %v", got, cfg.ConversionSpawnSpiritFloor)
+	}
+	if got := conversionSpawnSpiritFactor(100, 100, cfg); got != 1 {
+		t.Fatalf("max-spirit spawn factor = %v, want 1", got)
+	}
+}
+
+func TestMortalSpawnStronglyPrefersHighSpiritCells(t *testing.T) {
+	cfg := DefaultScenarioConfig()
+	env := engine.NewGrid(2, 1)
+	env.SetMortal(0, 0, 100)
+	env.SetMortal(1, 0, 100)
+	env.SetEnv0(0, 0, 10)
+	env.SetEnv0(1, 0, 100)
+	maxPop := maxMortalPop(env)
+	maxSpirit := maxCurrentSpirit(env)
+	rng := engine.NewRNG(42)
+
+	highSpiritSpawns := 0
+	for range 200 {
+		sr := sampleMortalSpawn(rng, env, maxPop, maxSpirit, cfg)
+		if sr.x == 1 {
+			highSpiritSpawns++
+		}
+	}
+
+	if highSpiritSpawns < 180 {
+		t.Fatalf("high-spirit spawn count = %d/200, want strong clustering", highSpiritSpawns)
 	}
 }
 
