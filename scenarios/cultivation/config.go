@@ -110,17 +110,25 @@ type ScenarioConfig struct {
 	SectExpansionCheckEvery            int
 	SectExpansionSearchRadius          int
 	SectExpansionInfluenceRadius       int
+	SectExpansionInfluenceStep         int
 	SectExpansionMinPotential          float64
 	SectExpansionMinMembers            int
 	SectExpansionMaxSites              int
 	SectExpansionValuePerPotential     float64
 	SectExpansionValuePerLocalMember   float64
+	SectExpansionValuePerCombatPower   float64
 	SectExpansionBaseCost              float64
 	SectExpansionSiteCost              float64
 	SectExpansionMemberUpkeepCost      float64
 	SectExpansionDistanceCost          float64
 	SectExpansionConflictCost          float64
+	SectExpansionOverextensionCost     float64
 	SectExpansionNetBenefitThreshold   float64
+	SectAggressiveExpansionStallTicks  int
+	SectAggressiveMinDispatchFrac      float64
+	SectAggressiveMaxDispatchFrac      float64
+	SectAggressiveCostMultiplier       float64
+	SectConquestPowerAdvantage         float64
 	// Combat
 	CombatDeathChance    float64
 	CombatCostBase       float64 // fraction of opponent qi paid by winner in combat
@@ -198,17 +206,25 @@ func DefaultScenarioConfig() ScenarioConfig {
 		SectExpansionCheckEvery:            40,
 		SectExpansionSearchRadius:          96,
 		SectExpansionInfluenceRadius:       28,
+		SectExpansionInfluenceStep:         8,
 		SectExpansionMinPotential:          0.50,
 		SectExpansionMinMembers:            90,
 		SectExpansionMaxSites:              4,
 		SectExpansionValuePerPotential:     140,
 		SectExpansionValuePerLocalMember:   0.25,
+		SectExpansionValuePerCombatPower:   0.05,
 		SectExpansionBaseCost:              45,
 		SectExpansionSiteCost:              16,
 		SectExpansionMemberUpkeepCost:      0.08,
 		SectExpansionDistanceCost:          18,
 		SectExpansionConflictCost:          0.80,
+		SectExpansionOverextensionCost:     0.35,
 		SectExpansionNetBenefitThreshold:   0,
+		SectAggressiveExpansionStallTicks:  400,
+		SectAggressiveMinDispatchFrac:      0.34,
+		SectAggressiveMaxDispatchFrac:      0.67,
+		SectAggressiveCostMultiplier:       1.8,
+		SectConquestPowerAdvantage:         1.20,
 		CombatDeathChance:                  0.3,
 		CombatCostBase:                     0.20,
 		CombatSelfMinCost:                  0.02,

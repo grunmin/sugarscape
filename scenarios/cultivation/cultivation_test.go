@@ -845,11 +845,29 @@ func TestSectDefaultsMatchStrategy(t *testing.T) {
 	if cfg.SectExpansionSearchRadius != 96 {
 		t.Fatalf("sect expansion search radius = %d, want 96", cfg.SectExpansionSearchRadius)
 	}
+	if cfg.SectExpansionInfluenceStep != 8 {
+		t.Fatalf("sect expansion influence step = %d, want 8", cfg.SectExpansionInfluenceStep)
+	}
 	if cfg.SectExpansionMinMembers != 90 {
 		t.Fatalf("sect expansion min members = %d, want 90", cfg.SectExpansionMinMembers)
 	}
 	if cfg.SectExpansionMaxSites != 4 {
 		t.Fatalf("sect expansion max sites = %d, want 4", cfg.SectExpansionMaxSites)
+	}
+	if cfg.SectExpansionValuePerCombatPower != 0.05 {
+		t.Fatalf("sect expansion combat value = %v, want 0.05", cfg.SectExpansionValuePerCombatPower)
+	}
+	if cfg.SectExpansionOverextensionCost != 0.35 {
+		t.Fatalf("sect overextension cost = %v, want 0.35", cfg.SectExpansionOverextensionCost)
+	}
+	if cfg.SectAggressiveExpansionStallTicks != 400 {
+		t.Fatalf("sect aggressive stall ticks = %d, want 400", cfg.SectAggressiveExpansionStallTicks)
+	}
+	if cfg.SectAggressiveMinDispatchFrac != 0.34 {
+		t.Fatalf("sect min dispatch fraction = %v, want 0.34", cfg.SectAggressiveMinDispatchFrac)
+	}
+	if cfg.SectAggressiveMaxDispatchFrac != 0.67 {
+		t.Fatalf("sect max dispatch fraction = %v, want 0.67", cfg.SectAggressiveMaxDispatchFrac)
 	}
 	if len(SectNames()) != 0 {
 		t.Fatalf("initial sect count = %d, want 0", len(SectNames()))
@@ -1026,8 +1044,8 @@ func TestSectExpansionClaimsProfitableHighSpiritSite(t *testing.T) {
 	defer resetSectState()
 
 	cfg := engine.DefaultEngineConfig()
-	cfg.GridWidth = 140
-	cfg.GridHeight = 140
+	cfg.GridWidth = 180
+	cfg.GridHeight = 180
 	cfg.NumWorkers = 1
 	w := engine.NewWorld(cfg)
 	scnCfg := DefaultScenarioConfig()
@@ -1046,10 +1064,10 @@ func TestSectExpansionClaimsProfitableHighSpiritSite(t *testing.T) {
 	}
 	loose := engine.NewAttrBag()
 	loose.Num["realm"] = 1
-	w.Next.Agents.Add("cultivator", 74, 10, loose)
+	w.Next.Agents.Add("cultivator", 90, 10, loose)
 
-	w.Next.Env.SetEnv1(74, 10, scnCfg.SpiritMax+scnCfg.BlessedLandMaxBonus)
-	w.Next.Env.SetEnv2(74, 10, scnCfg.SpiritRegenRate+scnCfg.BlessedLandRegenBonus)
+	w.Next.Env.SetEnv1(90, 10, scnCfg.SpiritMax+scnCfg.BlessedLandMaxBonus)
+	w.Next.Env.SetEnv2(90, 10, scnCfg.SpiritRegenRate+scnCfg.BlessedLandRegenBonus)
 
 	w.Clock.Tick = int64(scnCfg.SectExpansionCheckEvery)
 	(&SectSystem{}).Tick(w)
@@ -1059,7 +1077,7 @@ func TestSectExpansionClaimsProfitableHighSpiritSite(t *testing.T) {
 		t.Fatalf("sect site count = %d, want 2", len(sites))
 	}
 	expansion := sites[1]
-	if expansion.Kind != "扩张" || expansion.Name != name || expansion.X != 74 || expansion.Y != 10 {
+	if expansion.Kind != "扩张" || expansion.Name != name || expansion.X != 90 || expansion.Y != 10 {
 		t.Fatalf("expansion site = %+v, want expansion at high-spirit target", expansion)
 	}
 	if expansion.NetBenefit <= 0 {
@@ -1070,6 +1088,167 @@ func TestSectExpansionClaimsProfitableHighSpiritSite(t *testing.T) {
 	}
 	if got := w.Next.Agents.Attrs[0].Num["qi"]; got >= 100 {
 		t.Fatalf("member qi after expansion = %v, want upkeep cost applied", got)
+	}
+}
+
+func TestSectInfluenceRadiusGrowsWithCombatPower(t *testing.T) {
+	resetSectState()
+	defer resetSectState()
+
+	cfg := engine.DefaultEngineConfig()
+	cfg.GridWidth = 120
+	cfg.GridHeight = 120
+	cfg.NumWorkers = 1
+	w := engine.NewWorld(cfg)
+	scnCfg := DefaultScenarioConfig()
+
+	name := "开山宗1"
+	trait := SectTrait{Style: "开山", RecruitMultiplier: 1, PowerRecruitMultiplier: 1, BreakthroughMultiplier: 1}
+	registerTestSect(name, trait, SectSite{Name: name, Style: "开山", Kind: "立宗", X: 20, Y: 20, Radius: scnCfg.SectFormationInfluenceRadius})
+
+	for i := 0; i < scnCfg.SectExpansionMinMembers; i++ {
+		attrs := engine.NewAttrBag()
+		attrs.Str["sect"] = name
+		attrs.Num["realm"] = 1
+		attrs.Num["qi"] = 100
+		attrs.Num["combat_power"] = 200
+		w.Next.Agents.Add("cultivator", 20, 20, attrs)
+	}
+
+	w.Clock.Tick = int64(scnCfg.SectExpansionCheckEvery)
+	(&SectSystem{}).Tick(w)
+
+	sites := SectSites()
+	wantRadius := scnCfg.SectFormationInfluenceRadius + scnCfg.SectExpansionInfluenceStep
+	if len(sites) != 1 || sites[0].Radius != wantRadius {
+		t.Fatalf("sect sites = %+v, want one grown home radius %d", sites, wantRadius)
+	}
+	if got := w.Next.Agents.Attrs[0].Num["qi"]; got >= 100 {
+		t.Fatalf("member qi after influence growth = %v, want expansion cost applied", got)
+	}
+}
+
+func TestSectSiteOverlapUsesCombinedRadii(t *testing.T) {
+	sites := []SectSite{{Name: "宗门1", X: 10, Y: 10, Radius: 40}}
+	if !hasAnySiteOverlap(60, 10, 28, 200, 200, sites) {
+		t.Fatal("overlap check = false, want true when circles overlap")
+	}
+	if hasAnySiteOverlap(90, 10, 28, 200, 200, sites) {
+		t.Fatal("overlap check = true, want false for separated territories")
+	}
+}
+
+func TestStalledSectAggressivelyOccupiesUnclaimedHighSpiritSite(t *testing.T) {
+	resetSectState()
+	defer resetSectState()
+
+	cfg := engine.DefaultEngineConfig()
+	cfg.GridWidth = 240
+	cfg.GridHeight = 240
+	cfg.NumWorkers = 1
+	w := engine.NewWorld(cfg)
+	scnCfg := DefaultScenarioConfig()
+
+	name := "灵脉宗1"
+	trait := SectTrait{Style: "灵脉", RecruitMultiplier: 1, PowerRecruitMultiplier: 1, BreakthroughMultiplier: 1.2}
+	registerTestSect(name, trait, SectSite{Name: name, Style: "灵脉", Kind: "立宗", X: 16, Y: 16, Radius: scnCfg.SectFormationInfluenceRadius})
+
+	for i := 0; i < scnCfg.SectExpansionMinMembers; i++ {
+		attrs := engine.NewAttrBag()
+		attrs.Str["sect"] = name
+		attrs.Num["realm"] = 1
+		attrs.Num["qi"] = 100
+		attrs.Num["combat_power"] = 100
+		w.Next.Agents.Add("cultivator", 16, 16, attrs)
+	}
+
+	w.Next.Env.SetEnv1(128, 16, scnCfg.SpiritMax+scnCfg.BlessedLandMaxBonus)
+	w.Next.Env.SetEnv2(128, 16, scnCfg.SpiritRegenRate+scnCfg.BlessedLandRegenBonus)
+
+	system := &SectSystem{stalled: map[string]int{name: scnCfg.SectAggressiveExpansionStallTicks - scnCfg.SectExpansionCheckEvery}}
+	w.Clock.Tick = int64(scnCfg.SectExpansionCheckEvery)
+	system.Tick(w)
+
+	sites := SectSites()
+	if len(sites) != 2 {
+		t.Fatalf("sect site count = %d, want home plus occupied site", len(sites))
+	}
+	occupied := sites[1]
+	if occupied.Kind != "占领" || occupied.Name != name || occupied.X != 128 || occupied.Y != 16 {
+		t.Fatalf("occupied site = %+v, want aggressive occupation at high-spirit target", occupied)
+	}
+
+	dispatched := 0
+	for i := 0; i < scnCfg.SectExpansionMinMembers; i++ {
+		if w.Next.Agents.X[i] != 16 || w.Next.Agents.Y[i] != 16 {
+			dispatched++
+		}
+	}
+	minDispatch := int(math.Ceil(float64(scnCfg.SectExpansionMinMembers) * scnCfg.SectAggressiveMinDispatchFrac))
+	maxDispatch := int(math.Floor(float64(scnCfg.SectExpansionMinMembers) * scnCfg.SectAggressiveMaxDispatchFrac))
+	if dispatched < minDispatch || dispatched > maxDispatch {
+		t.Fatalf("dispatched members = %d, want in [%d, %d]", dispatched, minDispatch, maxDispatch)
+	}
+}
+
+func TestStalledSectCanConquerWeakerSectSite(t *testing.T) {
+	resetSectState()
+	defer resetSectState()
+
+	cfg := engine.DefaultEngineConfig()
+	cfg.GridWidth = 180
+	cfg.GridHeight = 180
+	cfg.NumWorkers = 1
+	w := engine.NewWorld(cfg)
+	scnCfg := DefaultScenarioConfig()
+
+	attacker := "战盟宗1"
+	defender := "灵脉宗2"
+	sectMu.Lock()
+	sectNames = append(sectNames, attacker, defender)
+	sectTraits = append(sectTraits,
+		SectTrait{Style: "战盟", RecruitMultiplier: 1, PowerRecruitMultiplier: 1, BreakthroughMultiplier: 1},
+		SectTrait{Style: "灵脉", RecruitMultiplier: 1, PowerRecruitMultiplier: 1, BreakthroughMultiplier: 1},
+	)
+	sectSites = append(sectSites,
+		SectSite{Name: attacker, Style: "战盟", Kind: "立宗", X: 16, Y: 16, Radius: scnCfg.SectFormationInfluenceRadius},
+		SectSite{Name: defender, Style: "灵脉", Kind: "立宗", X: 100, Y: 16, Radius: scnCfg.SectFormationInfluenceRadius, Potential: 1},
+	)
+	sectMu.Unlock()
+
+	for i := 0; i < scnCfg.SectExpansionMinMembers; i++ {
+		attrs := engine.NewAttrBag()
+		attrs.Str["sect"] = attacker
+		attrs.Num["realm"] = 1
+		attrs.Num["qi"] = 100
+		attrs.Num["combat_power"] = 100
+		w.Next.Agents.Add("cultivator", 16, 16, attrs)
+	}
+	for i := 0; i < 20; i++ {
+		attrs := engine.NewAttrBag()
+		attrs.Str["sect"] = defender
+		attrs.Num["realm"] = 1
+		attrs.Num["combat_power"] = 10
+		w.Next.Agents.Add("cultivator", 100, 16, attrs)
+	}
+
+	system := &SectSystem{stalled: map[string]int{attacker: scnCfg.SectAggressiveExpansionStallTicks - scnCfg.SectExpansionCheckEvery}}
+	w.Clock.Tick = int64(scnCfg.SectExpansionCheckEvery)
+	system.Tick(w)
+
+	sites := SectSites()
+	if sites[1].Name != attacker || sites[1].Kind != "攻占" {
+		t.Fatalf("defender site after conquest = %+v, want owned by attacker with 攻占 kind", sites[1])
+	}
+	dispatched := 0
+	for i := 0; i < scnCfg.SectExpansionMinMembers; i++ {
+		if w.Next.Agents.X[i] != 16 || w.Next.Agents.Y[i] != 16 {
+			dispatched++
+		}
+	}
+	maxDispatch := int(math.Floor(float64(scnCfg.SectExpansionMinMembers) * scnCfg.SectAggressiveMaxDispatchFrac))
+	if dispatched != maxDispatch {
+		t.Fatalf("conquest dispatched members = %d, want max dispatch %d", dispatched, maxDispatch)
 	}
 }
 

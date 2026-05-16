@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -52,5 +53,50 @@ func TestExportAnalysisSnapshotWritesJSONAndCSV(t *testing.T) {
 	}
 	if info, err := os.Stat(matches[0]); err != nil || info.Size() == 0 {
 		t.Fatalf("csv export stat = (%v, %v), want non-empty file", info, err)
+	}
+}
+
+func TestSnapshotIncludesSectNamesAndCultivatorIndexes(t *testing.T) {
+	cfg := engine.DefaultEngineConfig()
+	cfg.GridWidth = 10
+	cfg.GridHeight = 10
+	cfg.NumWorkers = 1
+
+	w := engine.NewWorld(cfg)
+	a := engine.NewAttrBag()
+	a.Num["realm"] = 1
+	a.Num["qi"] = 50
+	a.Num["qi_max"] = 100
+	a.Num["combat_power"] = 10
+	a.Str["sect"] = "青云宗"
+	b := engine.NewAttrBag()
+	b.Num["realm"] = 2
+	b.Num["qi"] = 80
+	b.Num["qi_max"] = 100
+	b.Num["combat_power"] = 20
+	b.Str["sect"] = "赤霞宗"
+	w.Next.Agents.Add("cultivator", 1, 1, a)
+	w.Next.Agents.Add("cultivator", 2, 2, b)
+	w.Curr = w.Next
+
+	d := NewDashboard(w, DashboardConfig{HeatmapScale: 5, UpdateEveryTicks: 1, MaxEvents: 10})
+	var snapshot StateSnapshot
+	if err := json.Unmarshal(d.buildSnapshot(), &snapshot); err != nil {
+		t.Fatalf("unmarshal snapshot: %v", err)
+	}
+
+	if len(snapshot.SectNames) != 2 {
+		t.Fatalf("sect names = %v, want two names from cultivators", snapshot.SectNames)
+	}
+	if len(snapshot.Stats.SectStats) != 2 {
+		t.Fatalf("sect stats = %+v, want two stats", snapshot.Stats.SectStats)
+	}
+	for _, c := range snapshot.Cultivators {
+		if c.SectIdx < 0 {
+			t.Fatalf("cultivator %+v has no sect index", c)
+		}
+		if c.SectIdx >= len(snapshot.SectNames) {
+			t.Fatalf("cultivator %+v has out-of-range sect index for %v", c, snapshot.SectNames)
+		}
 	}
 }

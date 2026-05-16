@@ -820,6 +820,7 @@
             let gRealmVisible = [false, false, true, true, true, true];
             let gHoveredAgent = null;
             let gCanvasScale = 1;
+            let gGridPerHeatCell = 5;
             let gHeatmapCache = {}; // { 'spirit': ImageData, 'mortal': ImageData, 'cult': ImageData }
             let gTrendHistory = []; // history points for trend chart
             let gMaxTrendPoints = 300;
@@ -955,10 +956,15 @@
             // RENDERING
             // ──────────────────────────────────
             function gridToCanvas(gx, gy) {
-                // Grid is 1000x1000, heatmap is 200x200, canvas is scaled
-                // For cultivator positions, we map directly: canvasX = gx / 5 * canvasPixelScale
                 const cs = gCanvasScale; // pixels per heatmap cell
-                return { cx: (gx / 5) * cs, cy: (gy / 5) * cs };
+                return {
+                    cx: (gx / gGridPerHeatCell) * cs,
+                    cy: (gy / gGridPerHeatCell) * cs,
+                };
+            }
+
+            function gridRadiusToCanvas(radius) {
+                return (radius / gGridPerHeatCell) * gCanvasScale;
             }
 
             function isRealmVisible(c) {
@@ -979,45 +985,65 @@
                 return SECT_COLORS[idx % SECT_COLORS.length];
             }
 
-            function drawSectSites(snapshot) {
+            function sectSitesForDisplay(snapshot) {
                 const sites = snapshot.sectSites || [];
+                if (sites.length) return sites;
+                const stats = (snapshot.stats && snapshot.stats.sectStats) || [];
+                return stats
+                    .filter((s) => s.radius > 0)
+                    .map((s) => ({
+                        name: s.name,
+                        trait: s.trait,
+                        kind: "立宗",
+                        x: s.siteX,
+                        y: s.siteY,
+                        radius: s.radius,
+                        count: s.count,
+                    }));
+            }
+
+            function drawSectSites(snapshot) {
+                const sites = sectSitesForDisplay(snapshot);
                 if (!gShowSects || !sites.length) return;
                 ctx.save();
                 const names = getSectNames(snapshot);
                 for (let i = 0; i < sites.length; i++) {
                     const site = sites[i];
                     const { cx, cy } = gridToCanvas(site.x, site.y);
-                    const radius = Math.max(
-                        5,
-                        (site.radius / 5) * gCanvasScale,
-                    );
+                    const radius = Math.max(7, gridRadiusToCanvas(site.radius));
                     const sectIdx = Math.max(0, names.indexOf(site.name));
                     const color = sectColor(sectIdx);
-                    const isExpansion = site.kind === "扩张";
+                    const isHome = site.kind === "立宗";
 
-                    ctx.globalAlpha = isExpansion ? 0.08 : 0.14;
+                    ctx.globalAlpha = isHome ? 0.18 : 0.12;
                     ctx.fillStyle = color;
                     ctx.beginPath();
                     ctx.arc(cx, cy, radius, 0, Math.PI * 2);
                     ctx.fill();
 
-                    ctx.globalAlpha = isExpansion ? 0.65 : 0.85;
+                    ctx.globalAlpha = isHome ? 0.95 : 0.80;
                     ctx.strokeStyle = color;
-                    ctx.lineWidth = Math.max(1.5, gCanvasScale * 0.55);
-                    if (isExpansion) ctx.setLineDash([4, 3]);
-                    else ctx.setLineDash([]);
+                    ctx.lineWidth = Math.max(2, gCanvasScale * 0.7);
+                    ctx.setLineDash(isHome ? [] : [4, 3]);
                     ctx.beginPath();
                     ctx.arc(cx, cy, radius, 0, Math.PI * 2);
                     ctx.stroke();
+
+                    ctx.setLineDash([]);
+                    ctx.globalAlpha = 1;
+                    ctx.fillStyle = color;
+                    ctx.beginPath();
+                    ctx.arc(cx, cy, Math.max(3, gCanvasScale), 0, Math.PI * 2);
+                    ctx.fill();
 
                     ctx.globalAlpha = 1;
                     ctx.font = `${Math.max(10, gCanvasScale * 2)}px sans-serif`;
                     ctx.textAlign = "center";
                     ctx.fillStyle = color;
                     ctx.fillText(
-                        isExpansion
-                            ? `${site.name} 据点`
-                            : `${site.name} ${site.count || 0}`,
+                        isHome
+                            ? `${site.name} ${site.count || 0}`
+                            : `${site.name} ${site.kind || "据点"}`,
                         cx,
                         cy + radius + 12,
                     );
@@ -1028,15 +1054,41 @@
 
             function drawSectRing(c, cx, cy, size, extra = 1.5) {
                 if (!gShowSects || c.si < 0) return;
+                const color = sectColor(c.si);
+                ctx.globalAlpha = 0.28;
+                ctx.beginPath();
+                ctx.arc(cx, cy, size + extra + 1.5, 0, Math.PI * 2);
+                ctx.fillStyle = color;
+                ctx.fill();
+                ctx.globalAlpha = 1;
                 ctx.beginPath();
                 ctx.arc(cx, cy, size + extra, 0, Math.PI * 2);
-                ctx.strokeStyle = sectColor(c.si);
-                ctx.lineWidth = Math.max(1, gCanvasScale * 0.35);
+                ctx.strokeStyle = color;
+                ctx.lineWidth = Math.max(1.5, gCanvasScale * 0.45);
                 ctx.stroke();
+            }
+
+            function drawHiddenSectMembers(cultivators) {
+                if (!gShowSects || !cultivators) return;
+                ctx.save();
+                for (const c of cultivators) {
+                    if (c.si < 0) continue;
+                    if (gShowCultivators && isRealmVisible(c)) continue;
+                    const { cx, cy } = gridToCanvas(c.x, c.y);
+                    ctx.globalAlpha = 0.45;
+                    ctx.strokeStyle = sectColor(c.si);
+                    ctx.lineWidth = Math.max(1, gCanvasScale * 0.35);
+                    ctx.beginPath();
+                    ctx.arc(cx, cy, Math.max(2.5, gCanvasScale * 0.8), 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+                ctx.restore();
             }
 
             function render(snapshot) {
                 gState = snapshot;
+                gGridPerHeatCell =
+                    snapshot.hmWidth > 0 ? snapshot.width / snapshot.hmWidth : 5;
 
                 const {
                     width,
@@ -1083,9 +1135,8 @@
                     for (const f of features) {
                         const color = FEATURE_COLORS[f.type] || "#888";
                         const label = FEATURE_LABELS[f.type] || f.type;
-                        const cx = (f.cx / 5) * gCanvasScale;
-                        const cy = (f.cy / 5) * gCanvasScale;
-                        const r = Math.max((f.radius / 5) * gCanvasScale, 4);
+                        const { cx, cy } = gridToCanvas(f.cx, f.cy);
+                        const r = Math.max(gridRadiusToCanvas(f.radius), 4);
 
                         // Circle
                         ctx.beginPath();
@@ -1166,6 +1217,8 @@
                         drawSectRing(c, cx, cy, size, 3);
                     }
                 }
+
+                drawHiddenSectMembers(cultivators);
 
                 // Update sidebar
                 updateSidebar(snapshot);
@@ -1259,7 +1312,7 @@
                 );
                 const sectSites = snapshot.sectSites || [];
                 const expansionSites = sectSites.filter(
-                    (site) => site.kind === "扩张",
+                    (site) => site.kind && site.kind !== "立宗",
                 ).length;
                 const activeSects = (stats.sectStats || []).filter(
                     (sect) => (sect.count || 0) > 0,
@@ -1297,7 +1350,7 @@
       <div class="insight-item" style="border-left-color:var(--purple)">
         <div class="insight-label">宗门占比</div>
         <div class="insight-val">${formatPct(sectTotal, total)}</div>
-        <div class="insight-sub">${activeSects} 宗 · 据点 ${sectSites.length} · 扩张 ${expansionSites}</div>
+        <div class="insight-sub">${activeSects} 宗 · 据点 ${sectSites.length} · 扩张/远征 ${expansionSites}</div>
       </div>
       <div class="insight-item" style="border-left-color:var(--cyan)">
         <div class="insight-label">平均灵气充盈</div>

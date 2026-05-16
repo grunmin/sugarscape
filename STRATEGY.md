@@ -251,13 +251,24 @@
 - 宗门扩张：
   - 每 `[SectExpansionCheckEvery=40]` tick 评估一次。
   - 宗门至少需要 `[SectExpansionMinMembers=90]` 名存活成员才会考虑扩张。
-  - 每个宗门最多拥有 `[SectExpansionMaxSites=4]` 个据点。
-  - 扩张只在既有据点 `[SectExpansionSearchRadius=96]` 半径内寻找目标，不会跨越式占地。
-  - 目标必须像灵泉或灵脉一样具备较高资源潜力：
+  - 扩张优先尝试提升既有宗址或据点的影响半径，而不是反复在同一区域建立固定半径圆圈。
+  - 单次和平扩张半径步长为 `[SectExpansionInfluenceStep=8]`。
+  - 半径扩张收益：
+    - `sqrt(宗门战力值) × [SectExpansionValuePerCombatPower=0.05]`
+    - `+ 新增环带平均资源潜力 × [SectExpansionValuePerPotential=140]`
+  - 半径扩张成本：
+    - `[SectExpansionBaseCost=45]`
+    - `+ (据点数 - 1) × [SectExpansionSiteCost=16]`
+    - `+ 宗门成员数 × [SectExpansionMemberUpkeepCost=0.08]`
+    - `+ 新半径 × [SectExpansionOverextensionCost=0.35]`
+  - 若半径扩张不划算，再尝试在既有据点 `[SectExpansionSearchRadius=96]` 半径内寻找新的高灵目标。
+  - 每个宗门最多拥有 `[SectExpansionMaxSites=4]` 个和平扩张据点；瓶颈后的远征不受此上限硬限制，但会承受过度扩张成本。
+  - 新据点目标必须像灵泉或灵脉一样具备较高资源潜力：
     - `Env1 >= SpiritMax + SpiritSpringMaxBonus`，或
     - `Env2 >= SpiritRegenRate + SpiritSpringRegenBonus`
     - 且资源潜力不低于 `[SectExpansionMinPotential=0.50]`
   - 新据点影响半径为 `[SectExpansionInfluenceRadius=28]`。
+  - 新据点不能与任何既有宗门地界重叠；重叠判定使用 `候选半径 + 既有据点半径`。
   - 扩张收益：
     - `资源潜力 × [SectExpansionValuePerPotential=140]`
     - `+ 目标附近同宗成员数 × [SectExpansionValuePerLocalMember=0.25]`
@@ -267,9 +278,17 @@
     - `+ 宗门成员数 × [SectExpansionMemberUpkeepCost=0.08]`
     - `+ 距离比例 × [SectExpansionDistanceCost=18]`
     - `+ 冲突压力 × [SectExpansionConflictCost=0.80]`
+    - `+ 新据点半径 × [SectExpansionOverextensionCost=0.35]`
   - 只有 `收益 - 成本 > [SectExpansionNetBenefitThreshold=0]` 时才建立新据点。
   - 扩张成本会由该宗门成员分摊扣除当前灵气。
   - 扩张据点同样会吸纳影响半径内的散修，后续新转化修士也可加入最近据点所属宗门。
+- 宗门扩张瓶颈与远征：
+  - 若宗门连续 `[SectAggressiveExpansionStallTicks=400]` tick 没有可盈利的和平扩张，会进入激进扩张评估。
+  - 宗门远征会派出 `[SectAggressiveMinDispatchFrac=34%]` 到 `[SectAggressiveMaxDispatchFrac=67%]` 的成员。
+  - 若存在无主高灵区域，宗门可发起“占领”远征并建立占领据点。
+  - 若存在其他宗门据点，且派出的远征战力至少达到守方局部战力的 `[SectConquestPowerAdvantage=1.20]` 倍，宗门可发起“攻占”远征并夺取该据点。
+  - 远征成本在普通扩张成本基础上乘以 `[SectAggressiveCostMultiplier=1.8]`。
+  - 远征同样会扣除全宗成员当前灵气，派出成员会移动到目标区域，后续会与当地敌对修士继续发生普通移动、追击和战斗。
 - 宗门风格由立宗条件推导，用于打破长期同质均势：
 
 | 风格 | 触发倾向 | 突破倍率 | 新弟子攻击性偏置 |
