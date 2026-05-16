@@ -158,8 +158,16 @@
             }
             #map-overlays {
                 display: flex;
+                flex-direction: column;
+                align-items: center;
                 gap: 8px;
                 margin-top: 8px;
+            }
+            .overlay-row {
+                display: flex;
+                flex-wrap: wrap;
+                justify-content: center;
+                gap: 10px;
             }
             #map-overlays label {
                 font-size: 12px;
@@ -172,6 +180,29 @@
             }
             #map-overlays input[type="checkbox"] {
                 accent-color: var(--accent);
+            }
+            #map-overlays select {
+                background: var(--panel2);
+                color: var(--text);
+                border: 1px solid var(--border);
+                padding: 2px 6px;
+                border-radius: 6px;
+                font-size: 12px;
+            }
+            .realm-filter {
+                padding: 2px 6px;
+                border: 1px solid var(--border);
+                border-radius: 6px;
+                background: rgba(17, 17, 34, 0.85);
+            }
+            .realm-filter.off {
+                opacity: 0.45;
+            }
+            .realm-filter .realm-chip-dot {
+                width: 8px;
+                height: 8px;
+                border-radius: 50%;
+                display: inline-block;
             }
             #tooltip {
                 position: absolute;
@@ -280,6 +311,31 @@
                 text-align: right;
                 font-weight: 600;
                 flex-shrink: 0;
+            }
+            .insight-grid {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 6px;
+            }
+            .insight-item {
+                background: var(--panel2);
+                border-radius: 6px;
+                padding: 7px 9px;
+                border-left: 2px solid var(--border);
+            }
+            .insight-item .insight-label {
+                font-size: 11px;
+                color: var(--text2);
+            }
+            .insight-item .insight-val {
+                font-size: 14px;
+                font-weight: 700;
+                margin-top: 2px;
+            }
+            .insight-item .insight-sub {
+                font-size: 10px;
+                color: var(--text2);
+                margin-top: 1px;
             }
 
             /* Tabs */
@@ -493,18 +549,98 @@
             <div id="map-area">
                 <canvas id="map-canvas"></canvas>
                 <div id="map-overlays">
-                    <label
-                        ><input type="checkbox" id="ol-spirit" checked />
-                        灵气</label
-                    >
-                    <label
-                        ><input type="checkbox" id="ol-features" checked />
-                        灵地</label
-                    >
-                    <label
-                        ><input type="checkbox" id="ol-cultivators" checked />
-                        修士</label
-                    >
+                    <div class="overlay-row">
+                        <label
+                            >底图
+                            <select id="map-mode">
+                                <option value="0" selected>灵气</option>
+                                <option value="1">凡人</option>
+                                <option value="2">修士密度</option>
+                            </select></label
+                        >
+                        <label
+                            ><input type="checkbox" id="ol-spirit" checked />
+                            灵气</label
+                        >
+                        <label
+                            ><input type="checkbox" id="ol-features" checked />
+                            灵地</label
+                        >
+                        <label
+                            ><input
+                                type="checkbox"
+                                id="ol-cultivators"
+                                checked
+                            />
+                            修士</label
+                        >
+                    </div>
+                    <div class="overlay-row" id="realm-filters">
+                        <label class="realm-filter off" data-realm-filter="1"
+                            ><input
+                                type="checkbox"
+                                class="ol-realm"
+                                data-realm="1"
+                            />
+                            <span
+                                class="realm-chip-dot"
+                                style="background: #aaa"
+                            ></span
+                            >练气</label
+                        >
+                        <label class="realm-filter" data-realm-filter="2"
+                            ><input
+                                type="checkbox"
+                                class="ol-realm"
+                                data-realm="2"
+                                checked
+                            />
+                            <span
+                                class="realm-chip-dot"
+                                style="background: #4fc3f7"
+                            ></span
+                            >筑基</label
+                        >
+                        <label class="realm-filter" data-realm-filter="3"
+                            ><input
+                                type="checkbox"
+                                class="ol-realm"
+                                data-realm="3"
+                                checked
+                            />
+                            <span
+                                class="realm-chip-dot"
+                                style="background: #ffd740"
+                            ></span
+                            >金丹</label
+                        >
+                        <label class="realm-filter" data-realm-filter="4"
+                            ><input
+                                type="checkbox"
+                                class="ol-realm"
+                                data-realm="4"
+                                checked
+                            />
+                            <span
+                                class="realm-chip-dot"
+                                style="background: #ff6e40"
+                            ></span
+                            >元婴</label
+                        >
+                        <label class="realm-filter" data-realm-filter="5"
+                            ><input
+                                type="checkbox"
+                                class="ol-realm"
+                                data-realm="5"
+                                checked
+                            />
+                            <span
+                                class="realm-chip-dot"
+                                style="background: #ff1744"
+                            ></span
+                            >化神</label
+                        >
+                    </div>
                 </div>
                 <div id="tooltip"></div>
             </div>
@@ -554,6 +690,11 @@
                 <div class="section">
                     <div class="section-title">🏔 境界分布</div>
                     <div id="realm-bars"></div>
+                </div>
+
+                <div class="section">
+                    <div class="section-title">🔎 世界洞察</div>
+                    <div id="world-insights"></div>
                 </div>
 
                 <!-- Tabs -->
@@ -611,6 +752,7 @@
             const REALM_COLORS_HEX = [
                 0x888888, 0xaaaaaa, 0x4fc3f7, 0xffd740, 0xff6e40, 0xff1744,
             ];
+            const REALM_QI_MAX = [0, 200, 600, 2000, 6000, 20000];
             const STRATEGY_NAMES = [
                 "aggressive",
                 "peaceful",
@@ -662,6 +804,7 @@
             let gViewMode = SPIRIT_HEAT;
             let gShowFeatures = true;
             let gShowCultivators = true;
+            let gRealmVisible = [false, false, true, true, true, true];
             let gHoveredAgent = null;
             let gCanvasScale = 1;
             let gHeatmapCache = {}; // { 'spirit': ImageData, 'mortal': ImageData, 'cult': ImageData }
@@ -748,6 +891,7 @@
                 const counts = new Uint32Array(hmWidth * hmHeight);
                 let maxCount = 0;
                 for (const c of cultivators) {
+                    if (!isRealmVisible(c)) continue;
                     const hx = Math.floor(c.x / 5) | 0; // scale = 5
                     const hy = Math.floor(c.y / 5) | 0;
                     if (hx >= 0 && hx < hmWidth && hy >= 0 && hy < hmHeight) {
@@ -802,6 +946,14 @@
                 // For cultivator positions, we map directly: canvasX = gx / 5 * canvasPixelScale
                 const cs = gCanvasScale; // pixels per heatmap cell
                 return { cx: (gx / 5) * cs, cy: (gy / 5) * cs };
+            }
+
+            function isRealmVisible(c) {
+                return !!gRealmVisible[c.r];
+            }
+
+            function shouldDrawCultivator(c) {
+                return gShowCultivators && isRealmVisible(c);
             }
 
             function render(snapshot) {
@@ -885,6 +1037,7 @@
 
                     // Draw non-tracked first, then tracked on top
                     for (const c of cultivators) {
+                        if (!shouldDrawCultivator(c)) continue;
                         if (trackedIds.has(c.id)) continue;
                         const { cx, cy } = gridToCanvas(c.x, c.y);
                         const realm = c.r;
@@ -900,6 +1053,7 @@
 
                     // Draw tracked cultivators with glow
                     for (const c of cultivators) {
+                        if (!shouldDrawCultivator(c)) continue;
                         if (!trackedIds.has(c.id)) continue;
                         const { cx, cy } = gridToCanvas(c.x, c.y);
                         const realm = c.r;
@@ -973,6 +1127,7 @@
 
                 // Realm bars
                 updateRealmBars(stats.realmCounts);
+                updateWorldInsights(snapshot);
 
                 // Tabs
                 updateSectTab(stats.sectStats || []);
@@ -998,6 +1153,82 @@
     </div>`;
                 }
                 container.innerHTML = html;
+            }
+
+            function updateWorldInsights(snapshot) {
+                const container = document.getElementById("world-insights");
+                const stats = snapshot.stats;
+                const realmCounts = stats.realmCounts || {};
+                const total = stats.totalCultivators || 0;
+                const visible = (snapshot.cultivators || []).filter(
+                    shouldDrawCultivator,
+                ).length;
+                const jindanPlus =
+                    (realmCounts["金丹"] || 0) +
+                    (realmCounts["元婴"] || 0) +
+                    (realmCounts["化神"] || 0);
+                const yuanyingPlus =
+                    (realmCounts["元婴"] || 0) + (realmCounts["化神"] || 0);
+                const sectTotal = (stats.sectStats || []).reduce(
+                    (sum, sect) => sum + (sect.count || 0),
+                    0,
+                );
+                let avgQiCap = 0;
+                for (let r = 1; r <= 5; r++) {
+                    avgQiCap +=
+                        (realmCounts[REALM_LEVEL_NAMES[r]] || 0) *
+                        REALM_QI_MAX[r];
+                }
+                avgQiCap = total > 0 ? avgQiCap / total : 0;
+                const qiPressure =
+                    avgQiCap > 0 ? (stats.avgQi / avgQiCap) * 100 : 0;
+                const eventPressure =
+                    total > 0
+                        ? ((stats.deaths + stats.breakthroughs) / total) * 1000
+                        : 0;
+                const conversionRate =
+                    stats.totalMortals > 0
+                        ? (stats.mortalConversions / stats.totalMortals) *
+                          1000000
+                        : 0;
+
+                container.innerHTML = `<div class="insight-grid">
+      <div class="insight-item" style="border-left-color:var(--accent)">
+        <div class="insight-label">地图显示</div>
+        <div class="insight-val">${visible.toLocaleString()} / ${total.toLocaleString()}</div>
+        <div class="insight-sub">练气默认隐藏，可在地图下方打开</div>
+      </div>
+      <div class="insight-item" style="border-left-color:${REALM_COLORS[3]}">
+        <div class="insight-label">金丹及以上</div>
+        <div class="insight-val">${formatPct(jindanPlus, total)}</div>
+        <div class="insight-sub">元婴以上 ${formatPct(yuanyingPlus, total)}</div>
+      </div>
+      <div class="insight-item" style="border-left-color:var(--purple)">
+        <div class="insight-label">宗门占比</div>
+        <div class="insight-val">${formatPct(sectTotal, total)}</div>
+        <div class="insight-sub">散修 ${(total - sectTotal).toLocaleString()} 人</div>
+      </div>
+      <div class="insight-item" style="border-left-color:var(--cyan)">
+        <div class="insight-label">平均灵气充盈</div>
+        <div class="insight-val">${qiPressure.toFixed(1)}%</div>
+        <div class="insight-sub">按当前境界上限加权估算</div>
+      </div>
+      <div class="insight-item" style="border-left-color:var(--accent2)">
+        <div class="insight-label">事件压力</div>
+        <div class="insight-val">${eventPressure.toFixed(2)}</div>
+        <div class="insight-sub">死亡+突破 / 千名修士</div>
+      </div>
+      <div class="insight-item" style="border-left-color:var(--green)">
+        <div class="insight-label">凡人转化</div>
+        <div class="insight-val">${conversionRate.toFixed(3)}</div>
+        <div class="insight-sub">每百万凡人，本快照周期</div>
+      </div>
+    </div>`;
+            }
+
+            function formatPct(part, total) {
+                if (!total) return "0.0%";
+                return ((part / total) * 100).toFixed(1) + "%";
             }
 
             function updateSectTab(sectStats) {
@@ -1252,6 +1483,7 @@
 
                 if (gShowCultivators && gState.cultivators) {
                     for (const c of gState.cultivators) {
+                        if (!shouldDrawCultivator(c)) continue;
                         const { cx, cy } = gridToCanvas(c.x, c.y);
                         const dx = mx - cx,
                             dy = my - cy;
@@ -1397,10 +1629,20 @@
                 .getElementById("ol-spirit")
                 .addEventListener("change", function () {
                     gViewMode = this.checked ? SPIRIT_HEAT : MORTAL_HEAT;
+                    document.getElementById("map-mode").value = String(gViewMode);
                     clearHeatmapCache();
                     if (gState) {
                         render(gState);
                     }
+                });
+            document
+                .getElementById("map-mode")
+                .addEventListener("change", function () {
+                    gViewMode = parseInt(this.value);
+                    document.getElementById("ol-spirit").checked =
+                        gViewMode === SPIRIT_HEAT;
+                    clearHeatmapCache();
+                    if (gState) render(gState);
                 });
             document
                 .getElementById("ol-features")
@@ -1412,8 +1654,21 @@
                 .getElementById("ol-cultivators")
                 .addEventListener("change", function () {
                     gShowCultivators = this.checked;
+                    clearHeatmapCache();
                     if (gState) render(gState);
                 });
+            document.querySelectorAll(".ol-realm").forEach((input) => {
+                input.addEventListener("change", function () {
+                    const realm = parseInt(this.dataset.realm);
+                    gRealmVisible[realm] = this.checked;
+                    const label = document.querySelector(
+                        `[data-realm-filter="${realm}"]`,
+                    );
+                    if (label) label.classList.toggle("off", !this.checked);
+                    clearHeatmapCache();
+                    if (gState) render(gState);
+                });
+            });
 
             // Tab switching
             document.querySelectorAll("#tab-bar .tab-btn").forEach((btn) => {
