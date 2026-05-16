@@ -40,6 +40,9 @@ func (s *MovementSystem) Tick(w *engine.World) {
 		}
 		agents.X[i] = result.x
 		agents.Y[i] = result.y
+		if result.clearMoveTarget {
+			clearMoveTarget(&agents.Attrs[i])
+		}
 		if result.moved {
 			agents.Attrs[i].Num["moved_this_tick"] = 1
 		} else {
@@ -51,9 +54,10 @@ func (s *MovementSystem) Tick(w *engine.World) {
 }
 
 type moveResult struct {
-	valid bool
-	x, y  int
-	moved bool
+	valid           bool
+	x, y            int
+	moved           bool
+	clearMoveTarget bool
 }
 
 func moveCultivator(
@@ -84,10 +88,15 @@ func moveCultivator(
 	result := moveResult{valid: true, x: xSnapshot[i], y: ySnapshot[i]}
 	for range steps {
 		x, y := result.x, result.y
+		moveTargetX, moveTargetY, hasMoveTarget := MoveTargetFor(agents.Attrs[i])
+		if hasMoveTarget && x == moveTargetX && y == moveTargetY {
+			result.clearMoveTarget = true
+			break
+		}
 
 		// Decide whether to move at all.
 		moveProb := movementProbabilityForCultivator(env, x, y, agents.Attrs[i])
-		if hasSectMissionTravelTarget(agents.Attrs[i], x, y) {
+		if hasMoveTarget || hasSectMissionTravelTarget(agents.Attrs[i], x, y) {
 			moveProb = 1
 		}
 		if rng.Float64() >= moveProb {
@@ -96,9 +105,33 @@ func moveCultivator(
 
 		startX, startY := x, y
 
-		// Priority 1: Combat — chase nearby enemies.
 		lowQi := qiFraction(agents.Attrs[i]) < 0.8
 		poorCell := cellSpiritFraction(env, x, y) < 0.25
+		if hasMoveTarget {
+			// Explicit targets override chase and rumor travel, but a starving
+			// cultivator can still take an immediately better spirit cell first.
+			if lowQi && poorCell {
+				if adjX, adjY, adjBetter := bestAdjacentSpiritPosition(env, x, y, gridW, gridH); adjBetter {
+					result.x, result.y = adjX, adjY
+					if result.x != startX || result.y != startY {
+						result.moved = true
+					}
+					continue
+				}
+			}
+
+			result.x, result.y = stepToward(x, y, moveTargetX, moveTargetY, gridW, gridH)
+			if result.x != startX || result.y != startY {
+				result.moved = true
+			}
+			if result.x == moveTargetX && result.y == moveTargetY {
+				result.clearMoveTarget = true
+				break
+			}
+			continue
+		}
+
+		// Priority 1: Combat — chase nearby enemies.
 		if !(lowQi && poorCell) {
 			if chaseX, chaseY, ok := chaseTargetPosition(rng, agents, env, spatial, i, x, y, gridW, gridH, detectRange, xSnapshot, ySnapshot, aliveSnapshot); ok {
 				result.x, result.y = chaseX, chaseY

@@ -100,3 +100,59 @@ func TestSnapshotIncludesSectNamesAndCultivatorIndexes(t *testing.T) {
 		}
 	}
 }
+
+func TestTrackedSnapshotIncludesMoveTarget(t *testing.T) {
+	cfg := engine.DefaultEngineConfig()
+	cfg.GridWidth = 10
+	cfg.GridHeight = 10
+	cfg.NumWorkers = 1
+
+	w := engine.NewWorld(cfg)
+	attrs := engine.NewAttrBag()
+	attrs.Num["realm"] = 1
+	attrs.Num["qi"] = 50
+	attrs.Num["qi_max"] = 100
+	attrs.Num["combat_power"] = 10
+	idx := w.Next.Agents.Add("cultivator", 1, 1, attrs)
+	id := w.Next.Agents.ID[idx]
+	cultivation.SetAgentMoveTarget(w.Next.Agents, id, 5, 6, cfg.GridWidth, cfg.GridHeight)
+	w.Curr = w.Next
+
+	d := NewDashboard(w, DashboardConfig{HeatmapScale: 5, UpdateEveryTicks: 1, MaxEvents: 10})
+	d.trackedIDs[id] = true
+	var snapshot StateSnapshot
+	if err := json.Unmarshal(d.buildSnapshot(), &snapshot); err != nil {
+		t.Fatalf("unmarshal snapshot: %v", err)
+	}
+
+	if len(snapshot.Tracked) != 1 {
+		t.Fatalf("tracked count = %d, want 1", len(snapshot.Tracked))
+	}
+	got := snapshot.Tracked[0]
+	if !got.HasMoveTarget || got.MoveTargetX != 5 || got.MoveTargetY != 6 {
+		t.Fatalf("tracked move target = (%v,%d,%d), want active target at (5,6)", got.HasMoveTarget, got.MoveTargetX, got.MoveTargetY)
+	}
+}
+
+func TestDashboardFiltersLifecycleEventsExceptTrackedAgents(t *testing.T) {
+	w := engine.NewWorld(engine.DefaultEngineConfig())
+	d := NewDashboard(w, DashboardConfig{HeatmapScale: 5, UpdateEveryTicks: 1, MaxEvents: 10})
+	d.trackedIDs[2] = true
+
+	events := []engine.NotableEvent{
+		{Kind: "死亡", Realm: "筑基", AgentID: 1, Reason: "战斗死亡"},
+		{Kind: "诞生", Realm: "元婴", AgentID: 2, Reason: "金丹 -> 元婴"},
+		{Kind: "立宗", Reason: "青云宗成立"},
+	}
+
+	filtered := d.filterNotableEvents(events)
+	if len(filtered) != 2 {
+		t.Fatalf("filtered events = %d, want tracked lifecycle event plus world event", len(filtered))
+	}
+	if filtered[0].AgentID != 2 || filtered[0].Kind != "诞生" {
+		t.Fatalf("first filtered event = %+v, want tracked birth event", filtered[0])
+	}
+	if filtered[1].Kind != "立宗" {
+		t.Fatalf("second filtered event = %+v, want sect world event", filtered[1])
+	}
+}

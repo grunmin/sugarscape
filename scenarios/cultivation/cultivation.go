@@ -120,19 +120,17 @@ func (s *CultivationSystem) Tick(w *engine.World) {
 					attrs.Num["breakthrough_cooldown"] = 0
 					attrs.Num["breakthrough_sustain_ticks"] = 0
 					w.Stats.RecordBreakthrough()
-					if newRealm >= 4 {
-						eventTick := w.Clock.Tick + 1
-						w.Stats.RecordNotableEvent(engine.NotableEvent{
-							Tick:    eventTick,
-							Year:    float64(eventTick) / float64(w.Config.TicksPerYear),
-							Kind:    "诞生",
-							Realm:   newRC.Name,
-							AgentID: agents.ID[i],
-							X:       agents.X[i],
-							Y:       agents.Y[i],
-							Reason:  rc.Name + " -> " + newRC.Name,
-						})
-					}
+					eventTick := w.Clock.Tick + 1
+					w.Stats.RecordNotableEvent(engine.NotableEvent{
+						Tick:    eventTick,
+						Year:    float64(eventTick) / float64(w.Config.TicksPerYear),
+						Kind:    "诞生",
+						Realm:   newRC.Name,
+						AgentID: agents.ID[i],
+						X:       agents.X[i],
+						Y:       agents.Y[i],
+						Reason:  rc.Name + " -> " + newRC.Name,
+					})
 				} else {
 					if realm == 3 && rng.Float64() < cfg.JindanBreakFailDeathChance {
 						localDeaths = append(localDeaths, breakthroughDeathReq{

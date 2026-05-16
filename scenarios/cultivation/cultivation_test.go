@@ -440,6 +440,39 @@ func TestBreakthroughToYuanyingRecordsBirthReason(t *testing.T) {
 	}
 }
 
+func TestBreakthroughToZhujiRecordsBirthReasonForTrackedFiltering(t *testing.T) {
+	oldBreakthrough := DefaultRealms[0].BreakthroughBase
+	DefaultRealms[0].BreakthroughBase = 2.0
+	defer func() { DefaultRealms[0].BreakthroughBase = oldBreakthrough }()
+
+	cfg := engine.DefaultEngineConfig()
+	cfg.GridWidth = 3
+	cfg.GridHeight = 3
+	cfg.NumWorkers = 1
+
+	w := engine.NewWorld(cfg)
+	attrs := engine.NewAttrBag()
+	attrs.Num["realm"] = 1
+	attrs.Num["qi"] = 200
+	attrs.Num["qi_max"] = 200
+	attrs.Num["lifespan"] = 120
+	attrs.Num["cultivation_speed"] = 0
+	attrs.Num["breakthrough_cooldown"] = 0
+	attrs.Num["breakthrough_sustain_ticks"] = 99
+	w.Next.Agents.Add("cultivator", 1, 1, attrs)
+
+	(&CultivationSystem{}).Tick(w)
+
+	events := w.Stats.DrainNotableEvents()
+	if len(events) != 1 {
+		t.Fatalf("notable events = %d, want 1", len(events))
+	}
+	ev := events[0]
+	if ev.Kind != "诞生" || ev.Realm != "筑基" || ev.Reason != "练气 -> 筑基" {
+		t.Fatalf("event = %+v, want zhuji birth breakthrough reason", ev)
+	}
+}
+
 func TestJindanBreakthroughFailureCanKill(t *testing.T) {
 	oldBreakthrough := DefaultRealms[2].BreakthroughBase
 	DefaultRealms[2].BreakthroughBase = 0.000001
@@ -657,6 +690,41 @@ func TestStrongerSecondCultivatorAttacksWhenDesireIsHigh(t *testing.T) {
 	}
 	if pendingFights[0].Attacker != 1 || pendingFights[0].Defender != 0 {
 		t.Fatalf("fight = %+v, want attacker 1 defender 0", pendingFights[0])
+	}
+	pendingFights = nil
+}
+
+func TestMoveTargetSuppressesActiveAttackDesire(t *testing.T) {
+	cfg := engine.DefaultEngineConfig()
+	cfg.GridWidth = 3
+	cfg.GridHeight = 3
+	cfg.NumWorkers = 1
+
+	w := engine.NewWorld(cfg)
+	weak := engine.NewAttrBag()
+	weak.Num["realm"] = 1
+	weak.Num["combat_power"] = 10
+	weak.Num["qi"] = 100
+	weak.Num["qi_max"] = 100
+	strong := engine.NewAttrBag()
+	strong.Num["realm"] = 1
+	strong.Num["combat_power"] = 40
+	strong.Num["qi"] = 100
+	strong.Num["qi_max"] = 100
+	strong.Num["aggression"] = 1
+	strong.Num["perceived_cp_mult"] = 1
+
+	w.Next.Agents.Add("cultivator", 1, 1, weak)
+	w.Next.Agents.Add("cultivator", 1, 1, strong)
+	if !SetAgentMoveTarget(w.Next.Agents, w.Next.Agents.ID[1], 2, 1, cfg.GridWidth, cfg.GridHeight) {
+		t.Fatal("set move target failed")
+	}
+	pendingFights = nil
+
+	(&InteractionSystem{}).Tick(w)
+
+	if len(pendingFights) != 0 {
+		t.Fatalf("pending fights = %d, want 0 while stronger cultivator is traveling", len(pendingFights))
 	}
 	pendingFights = nil
 }
@@ -1555,6 +1623,105 @@ func TestSectMissionTargetForcesTravelFromRichCell(t *testing.T) {
 
 	if w.Next.Agents.X[0] != 2 || w.Next.Agents.Y[0] != 1 {
 		t.Fatalf("mission traveler position = (%d,%d), want first step toward (5,1)", w.Next.Agents.X[0], w.Next.Agents.Y[0])
+	}
+}
+
+func TestMoveTargetForcesTravelFromRichCellAndClearsOnArrival(t *testing.T) {
+	cfg := engine.DefaultEngineConfig()
+	cfg.GridWidth = 10
+	cfg.GridHeight = 10
+	cfg.NumWorkers = 1
+	w := engine.NewWorld(cfg)
+	scnCfg := DefaultScenarioConfig()
+
+	w.Next.Env.SetEnv0(1, 1, scnCfg.SpiritMax)
+	w.Next.Env.SetEnv1(1, 1, scnCfg.SpiritMax+scnCfg.BlessedLandMaxBonus)
+	w.Next.Env.SetEnv2(1, 1, scnCfg.SpiritRegenRate+scnCfg.BlessedLandRegenBonus)
+	attrs := engine.NewAttrBag()
+	attrs.Num["realm"] = 1
+	attrs.Num["qi"] = 100
+	attrs.Num["qi_max"] = 100
+	w.Next.Agents.Add("cultivator", 1, 1, attrs)
+
+	if got := movementProbabilityForCultivator(w.Next.Env, 1, 1, attrs); got != 0 {
+		t.Fatalf("rich-cell movement probability = %v, want 0 before target override", got)
+	}
+	if !SetAgentMoveTarget(w.Next.Agents, w.Next.Agents.ID[0], 2, 1, cfg.GridWidth, cfg.GridHeight) {
+		t.Fatal("set move target failed")
+	}
+
+	w.Grid.Rebuild(w.Next.Agents)
+	(&MovementSystem{}).Tick(w)
+
+	if w.Next.Agents.X[0] != 2 || w.Next.Agents.Y[0] != 1 {
+		t.Fatalf("targeted traveler position = (%d,%d), want arrival at (2,1)", w.Next.Agents.X[0], w.Next.Agents.Y[0])
+	}
+	if _, _, ok := MoveTargetFor(w.Next.Agents.Attrs[0]); ok {
+		t.Fatalf("move target still active after arrival")
+	}
+}
+
+func TestMoveTargetSuppressesChaseMovement(t *testing.T) {
+	cfg := engine.DefaultEngineConfig()
+	cfg.GridWidth = 10
+	cfg.GridHeight = 10
+	cfg.NumWorkers = 1
+	w := engine.NewWorld(cfg)
+
+	traveler := engine.NewAttrBag()
+	traveler.Num["realm"] = 1
+	traveler.Num["combat_power"] = 100
+	traveler.Num["qi"] = 100
+	traveler.Num["qi_max"] = 100
+	traveler.Num["aggression"] = 10
+	traveler.Num["perceived_cp_mult"] = 1
+	enemy := engine.NewAttrBag()
+	enemy.Num["realm"] = 1
+	enemy.Num["combat_power"] = 1
+	enemy.Num["qi"] = 100
+	enemy.Num["qi_max"] = 100
+	w.Next.Agents.Add("cultivator", 5, 5, traveler)
+	w.Next.Agents.Add("cultivator", 4, 5, enemy)
+	if !SetAgentMoveTarget(w.Next.Agents, w.Next.Agents.ID[0], 6, 5, cfg.GridWidth, cfg.GridHeight) {
+		t.Fatal("set move target failed")
+	}
+
+	w.Grid.Rebuild(w.Next.Agents)
+	(&MovementSystem{}).Tick(w)
+
+	if w.Next.Agents.X[0] != 6 || w.Next.Agents.Y[0] != 5 {
+		t.Fatalf("targeted traveler position = (%d,%d), want target step to (6,5)", w.Next.Agents.X[0], w.Next.Agents.Y[0])
+	}
+}
+
+func TestMoveTargetLetsStarvingCultivatorSeekAdjacentSpirit(t *testing.T) {
+	cfg := engine.DefaultEngineConfig()
+	cfg.GridWidth = 10
+	cfg.GridHeight = 10
+	cfg.NumWorkers = 1
+	w := engine.NewWorld(cfg)
+
+	w.Next.Env.SetEnv0(1, 1, 0)
+	w.Next.Env.SetEnv1(1, 1, 100)
+	w.Next.Env.SetEnv0(1, 2, 100)
+	w.Next.Env.SetEnv1(1, 2, 100)
+	attrs := engine.NewAttrBag()
+	attrs.Num["realm"] = 1
+	attrs.Num["qi"] = 10
+	attrs.Num["qi_max"] = 100
+	w.Next.Agents.Add("cultivator", 1, 1, attrs)
+	if !SetAgentMoveTarget(w.Next.Agents, w.Next.Agents.ID[0], 5, 1, cfg.GridWidth, cfg.GridHeight) {
+		t.Fatal("set move target failed")
+	}
+
+	w.Grid.Rebuild(w.Next.Agents)
+	(&MovementSystem{}).Tick(w)
+
+	if w.Next.Agents.X[0] != 1 || w.Next.Agents.Y[0] != 2 {
+		t.Fatalf("starving targeted traveler position = (%d,%d), want adjacent spirit at (1,2)", w.Next.Agents.X[0], w.Next.Agents.Y[0])
+	}
+	if _, _, ok := MoveTargetFor(w.Next.Agents.Attrs[0]); !ok {
+		t.Fatalf("move target cleared before arrival")
 	}
 }
 

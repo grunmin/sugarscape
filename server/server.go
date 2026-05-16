@@ -50,6 +50,7 @@ type Dashboard struct {
 	cfg   DashboardConfig
 
 	mu         sync.Mutex
+	worldMu    sync.RWMutex
 	paused     bool
 	stepSignal chan struct{}
 	speed      int // target ticks per second, 0 = unlimited
@@ -127,6 +128,7 @@ func (d *Dashboard) Start() error {
 	http.HandleFunc("/api/speed", d.handleSpeed)
 	http.HandleFunc("/api/track", d.handleTrack)
 	http.HandleFunc("/api/untrack", d.handleUntrack)
+	http.HandleFunc("/api/move-target", d.handleMoveTarget)
 	http.HandleFunc("/api/stats", d.handleStatsHistory)
 
 	// Serve frontend
@@ -198,13 +200,17 @@ func (d *Dashboard) simulationLoop() {
 			}
 
 			// Advance simulation
+			d.worldMu.Lock()
 			d.world.Tick()
-			runElapsed += wallDelta
 
 			// Collect notable events
-			d.eventsMu.Lock()
 			newEvents := d.world.Stats.DrainNotableEvents()
-			d.notableEvents = append(d.notableEvents, newEvents...)
+			d.worldMu.Unlock()
+			runElapsed += wallDelta
+
+			visibleEvents := d.filterNotableEvents(newEvents)
+			d.eventsMu.Lock()
+			d.notableEvents = append(d.notableEvents, visibleEvents...)
 			if len(d.notableEvents) > d.cfg.MaxEvents {
 				excess := len(d.notableEvents) - d.cfg.MaxEvents
 				d.notableEvents = d.notableEvents[excess:]
@@ -249,16 +255,38 @@ func (d *Dashboard) simulationLoop() {
 	}
 }
 
+func (d *Dashboard) filterNotableEvents(events []engine.NotableEvent) []engine.NotableEvent {
+	if len(events) == 0 {
+		return nil
+	}
+	d.trackedMu.RLock()
+	defer d.trackedMu.RUnlock()
+
+	filtered := make([]engine.NotableEvent, 0, len(events))
+	for _, ev := range events {
+		if !dashboardEventNeedsTracking(ev) || d.trackedIDs[ev.AgentID] {
+			filtered = append(filtered, ev)
+		}
+	}
+	return filtered
+}
+
+func dashboardEventNeedsTracking(ev engine.NotableEvent) bool {
+	return ev.Kind == "死亡" || ev.Kind == "诞生" || ev.Kind == "晋升" || ev.Kind == "突破"
+}
+
 func (d *Dashboard) exportAnalysisSnapshot(index int, runElapsed time.Duration) error {
 	if err := os.MkdirAll(d.cfg.AnalysisDir, 0755); err != nil {
 		return err
 	}
 
+	d.worldMu.Lock()
 	tick := d.world.Clock.Tick
 	if len(d.world.Stats.Snapshots) == 0 ||
 		d.world.Stats.Snapshots[len(d.world.Stats.Snapshots)-1].Tick != tick {
 		d.world.Stats.Snapshot(d.world.Curr, d.world.Curr.Env, tick, d.world.Clock.Year())
 	}
+	d.worldMu.Unlock()
 
 	minute := int(runElapsed.Round(time.Second) / time.Minute)
 	if minute < index {
@@ -271,9 +299,12 @@ func (d *Dashboard) exportAnalysisSnapshot(index int, runElapsed time.Duration) 
 	}
 
 	csvPath := filepath.Join(d.cfg.AnalysisDir, base+".csv")
+	d.worldMu.RLock()
 	if err := d.world.Stats.ExportCSV(csvPath); err != nil {
+		d.worldMu.RUnlock()
 		return err
 	}
+	d.worldMu.RUnlock()
 
 	log.Printf("analysis exported: %s and %s", jsonPath, csvPath)
 	return nil
@@ -386,6 +417,9 @@ type TrackedAgent struct {
 	LowSpiritYears       float64 `json:"lowSpiritYears"`
 	CultivationSpeed     float64 `json:"cultSpeed"`
 	MovedThisTick        bool    `json:"moved"`
+	HasMoveTarget        bool    `json:"hasMoveTarget"`
+	MoveTargetX          int     `json:"moveTargetX,omitempty"`
+	MoveTargetY          int     `json:"moveTargetY,omitempty"`
 }
 
 // EventInfo is a notable event for the frontend.
@@ -413,6 +447,9 @@ func strategyIndex(name string) int {
 }
 
 func (d *Dashboard) buildSnapshot() []byte {
+	d.worldMu.RLock()
+	defer d.worldMu.RUnlock()
+
 	w := d.world
 	agents := w.Curr.Agents
 	env := w.Curr.Env
@@ -681,6 +718,7 @@ func (d *Dashboard) buildTrackedAgent(agents *engine.AgentStore, id int) *Tracke
 			if qiMax > 0 {
 				btProg = qi / qiMax
 			}
+			targetX, targetY, hasMoveTarget := cultivation.MoveTargetFor(agents.Attrs[i])
 			return &TrackedAgent{
 				ID:                   id,
 				X:                    agents.X[i],
@@ -701,6 +739,9 @@ func (d *Dashboard) buildTrackedAgent(agents *engine.AgentStore, id int) *Tracke
 				LowSpiritYears:       agents.Attrs[i].Num["low_spirit_years"],
 				CultivationSpeed:     agents.Attrs[i].Num["cultivation_speed"],
 				MovedThisTick:        agents.Attrs[i].Num["moved_this_tick"] == 1,
+				HasMoveTarget:        hasMoveTarget,
+				MoveTargetX:          targetX,
+				MoveTargetY:          targetY,
 			}
 		}
 	}
@@ -996,9 +1037,59 @@ func (d *Dashboard) handleUntrack(w http.ResponseWriter, r *http.Request) {
 	d.trackedMu.Lock()
 	delete(d.trackedIDs, req.AgentID)
 	d.trackedMu.Unlock()
+	d.worldMu.Lock()
+	cultivation.ClearAgentMoveTarget(d.world.Curr.Agents, req.AgentID)
+	d.worldMu.Unlock()
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(`{"untracked":true}`))
+}
+
+func (d *Dashboard) handleMoveTarget(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "POST required", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		AgentID int  `json:"agentId"`
+		X       int  `json:"x"`
+		Y       int  `json:"y"`
+		Clear   bool `json:"clear"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+	if req.AgentID <= 0 {
+		http.Error(w, "Invalid agent ID", http.StatusBadRequest)
+		return
+	}
+
+	d.worldMu.Lock()
+	var ok bool
+	if req.Clear {
+		ok = cultivation.ClearAgentMoveTarget(d.world.Curr.Agents, req.AgentID)
+	} else {
+		ok = cultivation.SetAgentMoveTarget(d.world.Curr.Agents, req.AgentID, req.X, req.Y, d.world.Config.GridWidth, d.world.Config.GridHeight)
+	}
+	d.worldMu.Unlock()
+	if !ok {
+		http.Error(w, "Agent not found", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	if req.Clear {
+		json.NewEncoder(w).Encode(map[string]any{"cleared": true, "agentId": req.AgentID})
+		return
+	}
+	json.NewEncoder(w).Encode(map[string]any{
+		"targeted": true,
+		"agentId":  req.AgentID,
+		"x":        wrapCoord(req.X, d.world.Config.GridWidth),
+		"y":        wrapCoord(req.Y, d.world.Config.GridHeight),
+	})
 }
 
 func (d *Dashboard) handleStatsHistory(w http.ResponseWriter, r *http.Request) {
@@ -1017,6 +1108,9 @@ func (d *Dashboard) handleStatsHistory(w http.ResponseWriter, r *http.Request) {
 		Deaths           int     `json:"deaths"`
 		Breakthroughs    int     `json:"breakthroughs"`
 	}
+	d.worldMu.RLock()
+	defer d.worldMu.RUnlock()
+
 	history := make([]HistoryPoint, 0)
 	for _, dp := range d.world.Stats.Snapshots {
 		history = append(history, HistoryPoint{
@@ -1065,6 +1159,17 @@ func base64Encode(data []byte) string {
 		}
 	}
 	return string(result)
+}
+
+func wrapCoord(v, size int) int {
+	if size <= 0 {
+		return 0
+	}
+	v %= size
+	if v < 0 {
+		v += size
+	}
+	return v
 }
 
 // Helper to get realm config without importing cultivation package directly.

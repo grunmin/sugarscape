@@ -112,6 +112,12 @@ func (s *InteractionSystem) resolveInteraction(w *engine.World, i, j int) Pendin
 		if enemyForI > 0 && enemyForI/selfI > cfg.FleeThreshold {
 			desireI = 0
 		}
+		if hasActiveMoveTarget(agents.Attrs[i], agents.X[i], agents.Y[i]) {
+			desireI = 0
+		}
+		if hasActiveMoveTarget(agents.Attrs[j], agents.X[j], agents.Y[j]) {
+			desireJ = 0
+		}
 
 		threshold := attackThreshold(agents.Attrs[i], agents.Attrs[j])
 		if desireI > threshold && desireI >= desireJ {
