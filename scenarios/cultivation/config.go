@@ -85,9 +85,25 @@ type ScenarioConfig struct {
 	SectFormationMinCultivators        int
 	SectFormationMinSustainTicks       int
 	SectFormationMinCombatDeaths       int
+	SectFormationMinJindan             int
+	SectFormationMinYuanying           int
 	SectFormationMinSpiritMaxBonus     float64
 	SectFormationMinRegenBonus         float64
 	SectFormationExistingSectExclusion int
+	SectExpansionCheckEvery            int
+	SectExpansionSearchRadius          int
+	SectExpansionInfluenceRadius       int
+	SectExpansionMinPotential          float64
+	SectExpansionMinMembers            int
+	SectExpansionMaxSites              int
+	SectExpansionValuePerPotential     float64
+	SectExpansionValuePerLocalMember   float64
+	SectExpansionBaseCost              float64
+	SectExpansionSiteCost              float64
+	SectExpansionMemberUpkeepCost      float64
+	SectExpansionDistanceCost          float64
+	SectExpansionConflictCost          float64
+	SectExpansionNetBenefitThreshold   float64
 	// Combat
 	CombatDeathChance    float64
 	CombatCostBase       float64 // fraction of opponent qi paid by winner in combat
@@ -151,15 +167,31 @@ func DefaultScenarioConfig() ScenarioConfig {
 		SectBreakthroughBonus:              0.30,
 		SectMentorBonusCap:                 0.50,
 		SectMentorScale:                    10,
-		SectFormationCheckEvery:            10,
-		SectFormationRadius:                18,
-		SectFormationInfluenceRadius:       36,
-		SectFormationMinCultivators:        35,
-		SectFormationMinSustainTicks:       80,
-		SectFormationMinCombatDeaths:       3,
-		SectFormationMinSpiritMaxBonus:     45,
-		SectFormationMinRegenBonus:         0.04,
-		SectFormationExistingSectExclusion: 72,
+		SectFormationCheckEvery:            20,
+		SectFormationRadius:                16,
+		SectFormationInfluenceRadius:       32,
+		SectFormationMinCultivators:        60,
+		SectFormationMinSustainTicks:       160,
+		SectFormationMinCombatDeaths:       6,
+		SectFormationMinJindan:             4,
+		SectFormationMinYuanying:           1,
+		SectFormationMinSpiritMaxBonus:     70,
+		SectFormationMinRegenBonus:         0.07,
+		SectFormationExistingSectExclusion: 120,
+		SectExpansionCheckEvery:            40,
+		SectExpansionSearchRadius:          96,
+		SectExpansionInfluenceRadius:       28,
+		SectExpansionMinPotential:          0.50,
+		SectExpansionMinMembers:            90,
+		SectExpansionMaxSites:              4,
+		SectExpansionValuePerPotential:     140,
+		SectExpansionValuePerLocalMember:   0.25,
+		SectExpansionBaseCost:              45,
+		SectExpansionSiteCost:              16,
+		SectExpansionMemberUpkeepCost:      0.08,
+		SectExpansionDistanceCost:          18,
+		SectExpansionConflictCost:          0.80,
+		SectExpansionNetBenefitThreshold:   0,
 		CombatDeathChance:                  0.3,
 		CombatCostBase:                     0.20,
 		CombatSelfMinCost:                  0.02,

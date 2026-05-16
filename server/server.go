@@ -261,6 +261,7 @@ type SectStatData struct {
 	Radius      int     `json:"radius"`
 	FoundedTick int64   `json:"foundedTick"`
 	Deaths      int     `json:"deaths"`
+	SiteCount   int     `json:"siteCount"`
 	Count       int     `json:"count"`
 	CombatValue float64 `json:"combatValue"`
 	MaxCP       float64 `json:"maxCP"`
@@ -269,14 +270,17 @@ type SectStatData struct {
 
 // SectSiteInfo describes where a dynamically founded sect is centered.
 type SectSiteInfo struct {
-	Name        string `json:"name"`
-	Trait       string `json:"trait"`
-	X           int    `json:"x"`
-	Y           int    `json:"y"`
-	Radius      int    `json:"radius"`
-	FoundedTick int64  `json:"foundedTick"`
-	Deaths      int    `json:"deaths"`
-	Count       int    `json:"count"`
+	Name        string  `json:"name"`
+	Trait       string  `json:"trait"`
+	Kind        string  `json:"kind"`
+	X           int     `json:"x"`
+	Y           int     `json:"y"`
+	Radius      int     `json:"radius"`
+	FoundedTick int64   `json:"foundedTick"`
+	Deaths      int     `json:"deaths"`
+	Potential   float64 `json:"potential"`
+	NetBenefit  float64 `json:"netBenefit"`
+	Count       int     `json:"count"`
 }
 
 // CultivatorInfo is compact cultivator data for map rendering.
@@ -1051,16 +1055,21 @@ func buildSectStats(agents *engine.AgentStore, sectNames []string) []SectStatDat
 	stats := make([]SectStatData, len(sectNames))
 	index := make(map[string]int, len(sectNames))
 	traits := cultivation.SectTraits()
-	sitesByName := make(map[string]cultivation.SectSite)
+	homeSitesByName := make(map[string]cultivation.SectSite)
+	siteCountsByName := make(map[string]int)
 	for _, site := range cultivation.SectSites() {
-		sitesByName[site.Name] = site
+		siteCountsByName[site.Name]++
+		if _, ok := homeSitesByName[site.Name]; !ok || site.Kind == "立宗" {
+			homeSitesByName[site.Name] = site
+		}
 	}
 	for i, name := range sectNames {
 		stats[i].Name = name
 		if i < len(traits) {
 			stats[i].Trait = traits[i].Style
 		}
-		if site, ok := sitesByName[name]; ok {
+		stats[i].SiteCount = siteCountsByName[name]
+		if site, ok := homeSitesByName[name]; ok {
 			stats[i].Trait = site.Style
 			stats[i].SiteX = site.X
 			stats[i].SiteY = site.Y
@@ -1109,11 +1118,14 @@ func buildSectSites(stats []SectStatData) []SectSiteInfo {
 		out = append(out, SectSiteInfo{
 			Name:        site.Name,
 			Trait:       site.Style,
+			Kind:        site.Kind,
 			X:           site.X,
 			Y:           site.Y,
 			Radius:      site.Radius,
 			FoundedTick: site.FoundedTick,
 			Deaths:      site.Deaths,
+			Potential:   site.Potential,
+			NetBenefit:  site.NetBenefit,
 			Count:       countByName[site.Name],
 		})
 	}

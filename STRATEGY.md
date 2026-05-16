@@ -226,23 +226,46 @@
 
 - 宗门不是初始化设定，而是由世界内实际聚集演化出来。
 - 初始宗门数量为 0。
-- 每 `[SectFormationCheckEvery=10]` tick 检查一次候选聚集地。
+- 每 `[SectFormationCheckEvery=20]` tick 检查一次候选聚集地。
 - 候选地必须位于高灵气资源：
-  - `Env1 >= SpiritMax + [SectFormationMinSpiritMaxBonus=45]`，或
-  - `Env2 >= SpiritRegenRate + [SectFormationMinRegenBonus=0.04]`
-- 以 `[SectFormationRadius=18]` 为聚集半径划分候选区域。
+  - `Env1 >= SpiritMax + [SectFormationMinSpiritMaxBonus=70]`，或
+  - `Env2 >= SpiritRegenRate + [SectFormationMinRegenBonus=0.07]`
+- 以 `[SectFormationRadius=16]` 为聚集半径划分候选区域。
 - 立宗条件：
-  - 候选区内散修数量不少于 `[SectFormationMinCultivators=35]`
-  - 满足人数门槛累计持续至少 `[SectFormationMinSustainTicks=80]` tick
-  - 候选区内累计战斗死亡不少于 `[SectFormationMinCombatDeaths=3]`
-  - `[SectFormationExistingSectExclusion=72]` 半径内没有已成立宗门
+  - 候选区内散修数量不少于 `[SectFormationMinCultivators=60]`
+  - 满足人数门槛累计持续至少 `[SectFormationMinSustainTicks=160]` tick
+  - 候选区内累计战斗死亡不少于 `[SectFormationMinCombatDeaths=6]`
+  - 候选区内至少有 `[SectFormationMinYuanying=1]` 位元婴及以上，或至少 `[SectFormationMinJindan=4]` 位金丹
+  - `[SectFormationExistingSectExclusion=120]` 半径内没有已成立宗门
 - 成立后：
   - 生成动态宗门名，例如 `灵脉宗1`、`战盟宗2`、`外门宗3`、`开山宗4`。
   - 宗址记录中心坐标、影响半径、立宗 tick 和触发战死数。
-  - `[SectFormationInfluenceRadius=36]` 半径内的散修会被纳入新宗门。
+  - `[SectFormationInfluenceRadius=32]` 半径内的散修会被纳入新宗门。
   - 后续在宗门影响半径内转化的新练气修士会加入最近宗门。
 - 每个宗门的战力值：
   - `sum(该宗门所有存活修士 combat_power²)`
+- 宗门扩张：
+  - 每 `[SectExpansionCheckEvery=40]` tick 评估一次。
+  - 宗门至少需要 `[SectExpansionMinMembers=90]` 名存活成员才会考虑扩张。
+  - 每个宗门最多拥有 `[SectExpansionMaxSites=4]` 个据点。
+  - 扩张只在既有据点 `[SectExpansionSearchRadius=96]` 半径内寻找目标，不会跨越式占地。
+  - 目标必须像灵泉或灵脉一样具备较高资源潜力：
+    - `Env1 >= SpiritMax + SpiritSpringMaxBonus`，或
+    - `Env2 >= SpiritRegenRate + SpiritSpringRegenBonus`
+    - 且资源潜力不低于 `[SectExpansionMinPotential=0.50]`
+  - 新据点影响半径为 `[SectExpansionInfluenceRadius=28]`。
+  - 扩张收益：
+    - `资源潜力 × [SectExpansionValuePerPotential=140]`
+    - `+ 目标附近同宗成员数 × [SectExpansionValuePerLocalMember=0.25]`
+  - 扩张成本：
+    - `[SectExpansionBaseCost=45]`
+    - `+ 已有据点数 × [SectExpansionSiteCost=16]`
+    - `+ 宗门成员数 × [SectExpansionMemberUpkeepCost=0.08]`
+    - `+ 距离比例 × [SectExpansionDistanceCost=18]`
+    - `+ 冲突压力 × [SectExpansionConflictCost=0.80]`
+  - 只有 `收益 - 成本 > [SectExpansionNetBenefitThreshold=0]` 时才建立新据点。
+  - 扩张成本会由该宗门成员分摊扣除当前灵气。
+  - 扩张据点同样会吸纳影响半径内的散修，后续新转化修士也可加入最近据点所属宗门。
 - 宗门风格由立宗条件推导，用于打破长期同质均势：
 
 | 风格 | 触发倾向 | 突破倍率 | 新弟子攻击性偏置 |

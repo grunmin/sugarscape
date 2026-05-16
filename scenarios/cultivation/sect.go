@@ -2,6 +2,7 @@ package cultivation
 
 import (
 	"fmt"
+	"math"
 	"sync"
 
 	"github.com/runmin/sugarscape/engine"
@@ -17,10 +18,13 @@ func (s *SectSystem) Priority() int { return 6 }
 type SectSite struct {
 	Name        string
 	Style       string
+	Kind        string
 	X, Y        int
 	Radius      int
 	FoundedTick int64
 	Deaths      int
+	Potential   float64
+	NetBenefit  float64
 }
 
 type sectCandidate struct {
@@ -28,7 +32,19 @@ type sectCandidate struct {
 	count          int
 	sustainedTicks int
 	combatDeaths   int
+	jindanCount    int
+	yuanyingCount  int
 	potential      float64
+}
+
+type sectExpansionPlan struct {
+	name       string
+	trait      SectTrait
+	x, y       int
+	potential  float64
+	value      float64
+	cost       float64
+	netBenefit float64
 }
 
 type sectDeathPoint struct{ x, y int }
@@ -95,10 +111,12 @@ func (s *SectSystem) Tick(w *engine.World) {
 	}
 
 	type clusterNow struct {
-		count     int
-		sumX      int
-		sumY      int
-		potential float64
+		count         int
+		jindanCount   int
+		yuanyingCount int
+		sumX          int
+		sumY          int
+		potential     float64
 	}
 	current := make(map[int]*clusterNow)
 	for i := range agents.ID {
@@ -117,6 +135,12 @@ func (s *SectSystem) Tick(w *engine.World) {
 			current[key] = c
 		}
 		c.count++
+		realm := int(agents.Attrs[i].Num["realm"])
+		if realm >= 4 {
+			c.yuanyingCount++
+		} else if realm == 3 {
+			c.jindanCount++
+		}
 		c.sumX += x
 		c.sumY += y
 		potential := sectCellPotential(cell, cfg)
@@ -135,6 +159,8 @@ func (s *SectSystem) Tick(w *engine.World) {
 			s.candidates[key] = c
 		}
 		c.count = now.count
+		c.jindanCount = now.jindanCount
+		c.yuanyingCount = now.yuanyingCount
 		c.x = now.sumX / now.count
 		c.y = now.sumY / now.count
 		c.potential = now.potential
@@ -166,6 +192,8 @@ func (s *SectSystem) Tick(w *engine.World) {
 			delete(s.candidates, key)
 		}
 	}
+
+	s.expandSects(w, cfg)
 }
 
 func (s *SectSystem) shouldFoundSect(c *sectCandidate, cfg ScenarioConfig, gridW, gridH int) bool {
@@ -178,6 +206,9 @@ func (s *SectSystem) shouldFoundSect(c *sectCandidate, cfg ScenarioConfig, gridW
 	if c.combatDeaths < cfg.SectFormationMinCombatDeaths {
 		return false
 	}
+	if c.yuanyingCount < cfg.SectFormationMinYuanying && c.jindanCount < cfg.SectFormationMinJindan {
+		return false
+	}
 	return !hasNearbySect(c.x, c.y, cfg.SectFormationExistingSectExclusion, gridW, gridH)
 }
 
@@ -186,11 +217,13 @@ func (s *SectSystem) foundSect(w *engine.World, c *sectCandidate, cfg ScenarioCo
 	site := SectSite{
 		Name:        name,
 		Style:       trait.Style,
+		Kind:        "立宗",
 		X:           c.x,
 		Y:           c.y,
 		Radius:      cfg.SectFormationInfluenceRadius,
 		FoundedTick: w.Clock.Tick + 1,
 		Deaths:      c.combatDeaths,
+		Potential:   c.potential,
 	}
 
 	sectMu.Lock()
@@ -207,8 +240,236 @@ func (s *SectSystem) foundSect(w *engine.World, c *sectCandidate, cfg ScenarioCo
 		Realm:  trait.Style,
 		X:      c.x,
 		Y:      c.y,
-		Reason: fmt.Sprintf("%s 成立：%d人聚集，%d场战死", name, c.count, c.combatDeaths),
+		Reason: fmt.Sprintf("%s 成立：%d人聚集，金丹%d，元婴%d，%d场战死", name, c.count, c.jindanCount, c.yuanyingCount, c.combatDeaths),
 	})
+}
+
+func (s *SectSystem) expandSects(w *engine.World, cfg ScenarioConfig) {
+	interval := cfg.SectExpansionCheckEvery
+	if interval <= 0 || w.Clock.Tick%int64(interval) != 0 {
+		return
+	}
+
+	memberCounts := sectMemberCounts(w.Next.Agents)
+	for _, name := range SectNames() {
+		count := memberCounts[name]
+		if count < cfg.SectExpansionMinMembers {
+			continue
+		}
+		plan, ok := bestSectExpansion(w, name, count, cfg)
+		if !ok || plan.netBenefit <= cfg.SectExpansionNetBenefitThreshold {
+			continue
+		}
+		applySectExpansion(w, plan, cfg)
+	}
+}
+
+func sectMemberCounts(agents *engine.AgentStore) map[string]int {
+	counts := make(map[string]int)
+	for i := range agents.ID {
+		if !agents.Alive[i] || agents.Kind[i] != "cultivator" {
+			continue
+		}
+		sect := agents.Attrs[i].Str["sect"]
+		if sect == "" {
+			continue
+		}
+		counts[sect]++
+	}
+	return counts
+}
+
+func bestSectExpansion(w *engine.World, name string, memberCount int, cfg ScenarioConfig) (sectExpansionPlan, bool) {
+	sites := SectSites()
+	owned := make([]SectSite, 0, 4)
+	for _, site := range sites {
+		if site.Name == name {
+			owned = append(owned, site)
+		}
+	}
+	if len(owned) == 0 {
+		return sectExpansionPlan{}, false
+	}
+	if cfg.SectExpansionMaxSites > 0 && len(owned) >= cfg.SectExpansionMaxSites {
+		return sectExpansionPlan{}, false
+	}
+
+	searchRadius := cfg.SectExpansionSearchRadius
+	if searchRadius <= 0 {
+		searchRadius = cfg.SectFormationInfluenceRadius * 2
+	}
+	influenceRadius := cfg.SectExpansionInfluenceRadius
+	if influenceRadius <= 0 {
+		influenceRadius = cfg.SectFormationInfluenceRadius
+	}
+	step := cfg.SectFormationRadius / 4
+	if step < 4 {
+		step = 4
+	}
+
+	gridW, gridH := w.Config.GridWidth, w.Config.GridHeight
+	env := w.Next.Env
+	best := sectExpansionPlan{name: name, trait: sectTraitForName(name)}
+	found := false
+
+	for _, site := range owned {
+		for dy := -searchRadius; dy <= searchRadius; dy += step {
+			for dx := -searchRadius; dx <= searchRadius; dx += step {
+				distSq := dx*dx + dy*dy
+				if distSq == 0 || distSq > searchRadius*searchRadius {
+					continue
+				}
+				x := engine.Wrap(site.X+dx, gridW)
+				y := engine.Wrap(site.Y+dy, gridH)
+				if hasAnySiteWithin(x, y, influenceRadius, gridW, gridH, sites) {
+					continue
+				}
+				cell := env.Cells[y*gridW+x]
+				potential := sectCellPotential(cell, cfg)
+				if potential < cfg.SectExpansionMinPotential || !isSectExpansionCell(cell, cfg) {
+					continue
+				}
+
+				localMembers := countSectMembersNear(w.Next.Agents, name, x, y, influenceRadius, gridW, gridH)
+				conflict := expansionConflictPressure(w.Next.Agents, sites, name, x, y, searchRadius, gridW, gridH)
+				distanceRatio := math.Sqrt(float64(distSq)) / float64(searchRadius)
+				value := potential*cfg.SectExpansionValuePerPotential +
+					float64(localMembers)*cfg.SectExpansionValuePerLocalMember
+				cost := cfg.SectExpansionBaseCost +
+					float64(len(owned))*cfg.SectExpansionSiteCost +
+					float64(memberCount)*cfg.SectExpansionMemberUpkeepCost +
+					distanceRatio*cfg.SectExpansionDistanceCost +
+					conflict*cfg.SectExpansionConflictCost
+				net := value - cost
+				if !found || net > best.netBenefit {
+					best.x = x
+					best.y = y
+					best.potential = potential
+					best.value = value
+					best.cost = cost
+					best.netBenefit = net
+					found = true
+				}
+			}
+		}
+	}
+
+	return best, found
+}
+
+func isSectExpansionCell(cell engine.Cell, cfg ScenarioConfig) bool {
+	return cell.Env1 >= cfg.SpiritMax+cfg.SpiritSpringMaxBonus ||
+		cell.Env2 >= cfg.SpiritRegenRate+cfg.SpiritSpringRegenBonus
+}
+
+func hasAnySiteWithin(x, y, radius, gridW, gridH int, sites []SectSite) bool {
+	if radius <= 0 {
+		return false
+	}
+	for _, site := range sites {
+		if toroidalDistanceSq(x, y, site.X, site.Y, gridW, gridH) <= radius*radius {
+			return true
+		}
+	}
+	return false
+}
+
+func countSectMembersNear(agents *engine.AgentStore, sect string, x, y, radius, gridW, gridH int) int {
+	count := 0
+	for i := range agents.ID {
+		if !agents.Alive[i] || agents.Kind[i] != "cultivator" || agents.Attrs[i].Str["sect"] != sect {
+			continue
+		}
+		if toroidalDistanceSq(x, y, agents.X[i], agents.Y[i], gridW, gridH) <= radius*radius {
+			count++
+		}
+	}
+	return count
+}
+
+func expansionConflictPressure(agents *engine.AgentStore, sites []SectSite, sect string, x, y, radius, gridW, gridH int) float64 {
+	pressure := 0.0
+	for _, site := range sites {
+		if site.Name == sect {
+			continue
+		}
+		if toroidalDistanceSq(x, y, site.X, site.Y, gridW, gridH) <= radius*radius {
+			pressure += 20
+		}
+	}
+	for i := range agents.ID {
+		if !agents.Alive[i] || agents.Kind[i] != "cultivator" {
+			continue
+		}
+		otherSect := agents.Attrs[i].Str["sect"]
+		if otherSect == "" || otherSect == sect {
+			continue
+		}
+		if toroidalDistanceSq(x, y, agents.X[i], agents.Y[i], gridW, gridH) <= radius*radius {
+			pressure++
+		}
+	}
+	return pressure
+}
+
+func applySectExpansion(w *engine.World, plan sectExpansionPlan, cfg ScenarioConfig) {
+	radius := cfg.SectExpansionInfluenceRadius
+	if radius <= 0 {
+		radius = cfg.SectFormationInfluenceRadius
+	}
+	site := SectSite{
+		Name:        plan.name,
+		Style:       plan.trait.Style,
+		Kind:        "扩张",
+		X:           plan.x,
+		Y:           plan.y,
+		Radius:      radius,
+		FoundedTick: w.Clock.Tick + 1,
+		Potential:   plan.potential,
+		NetBenefit:  plan.netBenefit,
+	}
+
+	sectMu.Lock()
+	sectSites = append(sectSites, site)
+	sectMu.Unlock()
+
+	assignNearbyLooseCultivators(w.Next.Agents, plan.name, plan.trait, plan.x, plan.y, radius, w.Config.GridWidth, w.Config.GridHeight)
+	applySectExpansionCost(w.Next.Agents, plan.name, plan.cost)
+	eventTick := w.Clock.Tick + 1
+	w.Stats.RecordNotableEvent(engine.NotableEvent{
+		Tick:   eventTick,
+		Year:   float64(eventTick) / float64(w.Config.TicksPerYear),
+		Kind:   "扩张",
+		Realm:  plan.trait.Style,
+		X:      plan.x,
+		Y:      plan.y,
+		Reason: fmt.Sprintf("%s 扩张：潜力 %.2f，收益 %.1f，成本 %.1f，净 %.1f", plan.name, plan.potential, plan.value, plan.cost, plan.netBenefit),
+	})
+}
+
+func applySectExpansionCost(agents *engine.AgentStore, sect string, cost float64) {
+	if cost <= 0 {
+		return
+	}
+	members := 0
+	for i := range agents.ID {
+		if agents.Alive[i] && agents.Kind[i] == "cultivator" && agents.Attrs[i].Str["sect"] == sect {
+			members++
+		}
+	}
+	if members == 0 {
+		return
+	}
+	perMember := cost / float64(members)
+	for i := range agents.ID {
+		if !agents.Alive[i] || agents.Kind[i] != "cultivator" || agents.Attrs[i].Str["sect"] != sect {
+			continue
+		}
+		agents.Attrs[i].Num["qi"] -= perMember
+		if agents.Attrs[i].Num["qi"] < 0 {
+			agents.Attrs[i].Num["qi"] = 0
+		}
+	}
 }
 
 func isSectFormationCell(cell engine.Cell, cfg ScenarioConfig) bool {
@@ -305,32 +566,25 @@ func assignNearbyLooseCultivators(agents *engine.AgentStore, name string, trait 
 }
 
 func nearestSectAt(x, y, gridW, gridH int, cfg ScenarioConfig) (string, SectTrait, bool) {
-	bestIdx := -1
+	var bestSite SectSite
+	found := false
 	bestDist := int(^uint(0) >> 1)
-	for i, site := range SectSites() {
+	for _, site := range SectSites() {
 		radius := site.Radius
 		if radius <= 0 {
 			radius = cfg.SectFormationInfluenceRadius
 		}
 		dist := toroidalDistanceSq(x, y, site.X, site.Y, gridW, gridH)
 		if dist <= radius*radius && dist < bestDist {
-			bestIdx = i
+			bestSite = site
+			found = true
 			bestDist = dist
 		}
 	}
-	if bestIdx < 0 {
+	if !found {
 		return "", SectTrait{}, false
 	}
-	names := SectNames()
-	traits := SectTraits()
-	if bestIdx >= len(names) {
-		return "", SectTrait{}, false
-	}
-	trait := SectTrait{RecruitMultiplier: 1, PowerRecruitMultiplier: 1, BreakthroughMultiplier: 1}
-	if bestIdx < len(traits) {
-		trait = traits[bestIdx]
-	}
-	return names[bestIdx], trait, true
+	return bestSite.Name, sectTraitForName(bestSite.Name), true
 }
 
 func toroidalDistanceSq(ax, ay, bx, by, gridW, gridH int) int {

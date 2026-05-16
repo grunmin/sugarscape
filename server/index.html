@@ -983,6 +983,7 @@
                 const sites = snapshot.sectSites || [];
                 if (!gShowSects || !sites.length) return;
                 ctx.save();
+                const names = getSectNames(snapshot);
                 for (let i = 0; i < sites.length; i++) {
                     const site = sites[i];
                     const { cx, cy } = gridToCanvas(site.x, site.y);
@@ -990,17 +991,21 @@
                         5,
                         (site.radius / 5) * gCanvasScale,
                     );
-                    const color = sectColor(i);
+                    const sectIdx = Math.max(0, names.indexOf(site.name));
+                    const color = sectColor(sectIdx);
+                    const isExpansion = site.kind === "扩张";
 
-                    ctx.globalAlpha = 0.14;
+                    ctx.globalAlpha = isExpansion ? 0.08 : 0.14;
                     ctx.fillStyle = color;
                     ctx.beginPath();
                     ctx.arc(cx, cy, radius, 0, Math.PI * 2);
                     ctx.fill();
 
-                    ctx.globalAlpha = 0.85;
+                    ctx.globalAlpha = isExpansion ? 0.65 : 0.85;
                     ctx.strokeStyle = color;
                     ctx.lineWidth = Math.max(1.5, gCanvasScale * 0.55);
+                    if (isExpansion) ctx.setLineDash([4, 3]);
+                    else ctx.setLineDash([]);
                     ctx.beginPath();
                     ctx.arc(cx, cy, radius, 0, Math.PI * 2);
                     ctx.stroke();
@@ -1010,11 +1015,14 @@
                     ctx.textAlign = "center";
                     ctx.fillStyle = color;
                     ctx.fillText(
-                        `${site.name} ${site.count || 0}`,
+                        isExpansion
+                            ? `${site.name} 据点`
+                            : `${site.name} ${site.count || 0}`,
                         cx,
                         cy + radius + 12,
                     );
                 }
+                ctx.setLineDash([]);
                 ctx.restore();
             }
 
@@ -1250,6 +1258,9 @@
                     0,
                 );
                 const sectSites = snapshot.sectSites || [];
+                const expansionSites = sectSites.filter(
+                    (site) => site.kind === "扩张",
+                ).length;
                 const activeSects = (stats.sectStats || []).filter(
                     (sect) => (sect.count || 0) > 0,
                 ).length;
@@ -1286,7 +1297,7 @@
       <div class="insight-item" style="border-left-color:var(--purple)">
         <div class="insight-label">宗门占比</div>
         <div class="insight-val">${formatPct(sectTotal, total)}</div>
-        <div class="insight-sub">${activeSects} 宗 · 宗址 ${sectSites.length} · 散修 ${(total - sectTotal).toLocaleString()}</div>
+        <div class="insight-sub">${activeSects} 宗 · 据点 ${sectSites.length} · 扩张 ${expansionSites}</div>
       </div>
       <div class="insight-item" style="border-left-color:var(--cyan)">
         <div class="insight-label">平均灵气充盈</div>
@@ -1324,7 +1335,7 @@
                     }
                     const siteText =
                         s.radius > 0
-                            ? `宗址 (${s.siteX}, ${s.siteY}) · r${s.radius}`
+                            ? `宗址 (${s.siteX}, ${s.siteY}) · r${s.radius} · 据点 ${s.siteCount || 1}`
                             : "尚未形成宗址";
                     const foundedText =
                         s.foundedTick > 0

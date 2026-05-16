@@ -730,32 +730,50 @@ func TestSectDefaultsMatchStrategy(t *testing.T) {
 	if cfg.SectMentorScale != 10 {
 		t.Fatalf("sect mentor scale = %v, want 10", cfg.SectMentorScale)
 	}
-	if cfg.SectFormationCheckEvery != 10 {
-		t.Fatalf("sect formation check interval = %d, want 10", cfg.SectFormationCheckEvery)
+	if cfg.SectFormationCheckEvery != 20 {
+		t.Fatalf("sect formation check interval = %d, want 20", cfg.SectFormationCheckEvery)
 	}
-	if cfg.SectFormationRadius != 18 {
-		t.Fatalf("sect formation radius = %d, want 18", cfg.SectFormationRadius)
+	if cfg.SectFormationRadius != 16 {
+		t.Fatalf("sect formation radius = %d, want 16", cfg.SectFormationRadius)
 	}
-	if cfg.SectFormationInfluenceRadius != 36 {
-		t.Fatalf("sect formation influence radius = %d, want 36", cfg.SectFormationInfluenceRadius)
+	if cfg.SectFormationInfluenceRadius != 32 {
+		t.Fatalf("sect formation influence radius = %d, want 32", cfg.SectFormationInfluenceRadius)
 	}
-	if cfg.SectFormationMinCultivators != 35 {
-		t.Fatalf("sect formation min cultivators = %d, want 35", cfg.SectFormationMinCultivators)
+	if cfg.SectFormationMinCultivators != 60 {
+		t.Fatalf("sect formation min cultivators = %d, want 60", cfg.SectFormationMinCultivators)
 	}
-	if cfg.SectFormationMinSustainTicks != 80 {
-		t.Fatalf("sect formation sustain ticks = %d, want 80", cfg.SectFormationMinSustainTicks)
+	if cfg.SectFormationMinSustainTicks != 160 {
+		t.Fatalf("sect formation sustain ticks = %d, want 160", cfg.SectFormationMinSustainTicks)
 	}
-	if cfg.SectFormationMinCombatDeaths != 3 {
-		t.Fatalf("sect formation combat deaths = %d, want 3", cfg.SectFormationMinCombatDeaths)
+	if cfg.SectFormationMinCombatDeaths != 6 {
+		t.Fatalf("sect formation combat deaths = %d, want 6", cfg.SectFormationMinCombatDeaths)
 	}
-	if cfg.SectFormationMinSpiritMaxBonus != 45 {
-		t.Fatalf("sect formation spirit max bonus = %v, want 45", cfg.SectFormationMinSpiritMaxBonus)
+	if cfg.SectFormationMinJindan != 4 {
+		t.Fatalf("sect formation jindan leaders = %d, want 4", cfg.SectFormationMinJindan)
 	}
-	if cfg.SectFormationMinRegenBonus != 0.04 {
-		t.Fatalf("sect formation regen bonus = %v, want 0.04", cfg.SectFormationMinRegenBonus)
+	if cfg.SectFormationMinYuanying != 1 {
+		t.Fatalf("sect formation yuanying leaders = %d, want 1", cfg.SectFormationMinYuanying)
 	}
-	if cfg.SectFormationExistingSectExclusion != 72 {
-		t.Fatalf("sect formation exclusion radius = %d, want 72", cfg.SectFormationExistingSectExclusion)
+	if cfg.SectFormationMinSpiritMaxBonus != 70 {
+		t.Fatalf("sect formation spirit max bonus = %v, want 70", cfg.SectFormationMinSpiritMaxBonus)
+	}
+	if cfg.SectFormationMinRegenBonus != 0.07 {
+		t.Fatalf("sect formation regen bonus = %v, want 0.07", cfg.SectFormationMinRegenBonus)
+	}
+	if cfg.SectFormationExistingSectExclusion != 120 {
+		t.Fatalf("sect formation exclusion radius = %d, want 120", cfg.SectFormationExistingSectExclusion)
+	}
+	if cfg.SectExpansionCheckEvery != 40 {
+		t.Fatalf("sect expansion interval = %d, want 40", cfg.SectExpansionCheckEvery)
+	}
+	if cfg.SectExpansionSearchRadius != 96 {
+		t.Fatalf("sect expansion search radius = %d, want 96", cfg.SectExpansionSearchRadius)
+	}
+	if cfg.SectExpansionMinMembers != 90 {
+		t.Fatalf("sect expansion min members = %d, want 90", cfg.SectExpansionMinMembers)
+	}
+	if cfg.SectExpansionMaxSites != 4 {
+		t.Fatalf("sect expansion max sites = %d, want 4", cfg.SectExpansionMaxSites)
 	}
 	if len(SectNames()) != 0 {
 		t.Fatalf("initial sect count = %d, want 0", len(SectNames()))
@@ -842,7 +860,11 @@ func TestSectSystemFoundsSectFromHighSpiritCluster(t *testing.T) {
 	w.Next.Env.SetEnv2(x, y, scnCfg.SpiritRegenRate+scnCfg.BlessedLandRegenBonus)
 	for i := 0; i < scnCfg.SectFormationMinCultivators; i++ {
 		attrs := engine.NewAttrBag()
-		attrs.Num["realm"] = 1
+		if i < scnCfg.SectFormationMinJindan {
+			attrs.Num["realm"] = 3
+		} else {
+			attrs.Num["realm"] = 1
+		}
 		attrs.Num["combat_power"] = 1
 		w.Next.Agents.Add("cultivator", x, y, attrs)
 	}
@@ -877,6 +899,101 @@ func TestSectSystemFoundsSectFromHighSpiritCluster(t *testing.T) {
 	newcomer := w.Next.Agents.Attrs[len(w.Next.Agents.Attrs)-1]
 	if got := newcomer.Str["sect"]; got != names[0] {
 		t.Fatalf("new nearby cultivator sect = %q, want %q", got, names[0])
+	}
+}
+
+func TestSectSystemRequiresHighRealmFounders(t *testing.T) {
+	resetSectState()
+	defer resetSectState()
+
+	cfg := engine.DefaultEngineConfig()
+	cfg.GridWidth = 100
+	cfg.GridHeight = 100
+	cfg.NumWorkers = 1
+	w := engine.NewWorld(cfg)
+	scnCfg := DefaultScenarioConfig()
+
+	x, y := 10, 10
+	w.Next.Env.SetEnv1(x, y, scnCfg.SpiritMax+scnCfg.BlessedLandMaxBonus)
+	w.Next.Env.SetEnv2(x, y, scnCfg.SpiritRegenRate+scnCfg.BlessedLandRegenBonus)
+	for i := 0; i < scnCfg.SectFormationMinCultivators; i++ {
+		attrs := engine.NewAttrBag()
+		attrs.Num["realm"] = 1
+		attrs.Num["combat_power"] = 1
+		w.Next.Agents.Add("cultivator", x, y, attrs)
+	}
+	for i := 0; i < scnCfg.SectFormationMinCombatDeaths; i++ {
+		recordSectCandidateDeath(x, y)
+	}
+
+	system := &SectSystem{}
+	for tick := int64(scnCfg.SectFormationCheckEvery); tick <= int64(scnCfg.SectFormationMinSustainTicks); tick += int64(scnCfg.SectFormationCheckEvery) {
+		w.Clock.Tick = tick
+		system.Tick(w)
+	}
+
+	if got := len(SectNames()); got != 0 {
+		t.Fatalf("sect count without high-realm founders = %d, want 0", got)
+	}
+
+	w.Next.Agents.Attrs[0].Num["realm"] = 4
+	w.Clock.Tick += int64(scnCfg.SectFormationCheckEvery)
+	system.Tick(w)
+
+	if got := len(SectNames()); got != 1 {
+		t.Fatalf("sect count after yuanying founder = %d, want 1", got)
+	}
+}
+
+func TestSectExpansionClaimsProfitableHighSpiritSite(t *testing.T) {
+	resetSectState()
+	defer resetSectState()
+
+	cfg := engine.DefaultEngineConfig()
+	cfg.GridWidth = 140
+	cfg.GridHeight = 140
+	cfg.NumWorkers = 1
+	w := engine.NewWorld(cfg)
+	scnCfg := DefaultScenarioConfig()
+
+	name := "灵脉宗1"
+	trait := SectTrait{Style: "灵脉", RecruitMultiplier: 1, PowerRecruitMultiplier: 1, BreakthroughMultiplier: 1.2}
+	registerTestSect(name, trait, SectSite{Name: name, Style: "灵脉", Kind: "立宗", X: 10, Y: 10, Radius: scnCfg.SectFormationInfluenceRadius})
+
+	for i := 0; i < scnCfg.SectExpansionMinMembers; i++ {
+		attrs := engine.NewAttrBag()
+		attrs.Str["sect"] = name
+		attrs.Num["realm"] = 1
+		attrs.Num["qi"] = 100
+		attrs.Num["combat_power"] = 1
+		w.Next.Agents.Add("cultivator", 10, 10, attrs)
+	}
+	loose := engine.NewAttrBag()
+	loose.Num["realm"] = 1
+	w.Next.Agents.Add("cultivator", 74, 10, loose)
+
+	w.Next.Env.SetEnv1(74, 10, scnCfg.SpiritMax+scnCfg.BlessedLandMaxBonus)
+	w.Next.Env.SetEnv2(74, 10, scnCfg.SpiritRegenRate+scnCfg.BlessedLandRegenBonus)
+
+	w.Clock.Tick = int64(scnCfg.SectExpansionCheckEvery)
+	(&SectSystem{}).Tick(w)
+
+	sites := SectSites()
+	if len(sites) != 2 {
+		t.Fatalf("sect site count = %d, want 2", len(sites))
+	}
+	expansion := sites[1]
+	if expansion.Kind != "扩张" || expansion.Name != name || expansion.X != 74 || expansion.Y != 10 {
+		t.Fatalf("expansion site = %+v, want expansion at high-spirit target", expansion)
+	}
+	if expansion.NetBenefit <= 0 {
+		t.Fatalf("expansion net benefit = %v, want profitable", expansion.NetBenefit)
+	}
+	if got := w.Next.Agents.Attrs[len(w.Next.Agents.Attrs)-1].Str["sect"]; got != name {
+		t.Fatalf("loose cultivator sect after expansion = %q, want %q", got, name)
+	}
+	if got := w.Next.Agents.Attrs[0].Num["qi"]; got >= 100 {
+		t.Fatalf("member qi after expansion = %v, want upkeep cost applied", got)
 	}
 }
 
