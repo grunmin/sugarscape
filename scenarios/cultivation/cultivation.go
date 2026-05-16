@@ -79,6 +79,11 @@ func (s *CultivationSystem) Tick(w *engine.World) {
 				cellLock.Unlock()
 
 				attrs.Num["qi"] += absorb
+
+				// Rumor creation: if this is a notably high-spirit cell, remember it.
+				createRumor(attrs, x, y, env.Cells[cellIdx].Env0, env.Env1(x, y))
+				// Rumor verification: if at rumored location, check if still valid.
+				verifyRumorAtLocation(attrs, env.Cells[cellIdx].Env0, env.Env1(x, y))
 			}
 
 			if attrs.Num["qi"] > qiMax {

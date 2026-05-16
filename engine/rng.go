@@ -20,8 +20,9 @@ func (r *RNG) Fork() *RNG {
 	return NewRNG(r.rand.Uint64())
 }
 
-func (r *RNG) Float64() float64    { return r.rand.Float64() }
-func (r *RNG) Intn(n int) int       { return r.rand.IntN(n) }
+func (r *RNG) Float64() float64 { return r.rand.Float64() }
+func (r *RNG) Uint64() uint64   { return r.rand.Uint64() }
+func (r *RNG) Intn(n int) int   { return r.rand.IntN(n) }
 func (r *RNG) IntRange(min, max int) int {
 	return min + r.rand.IntN(max-min+1)
 }

@@ -82,6 +82,9 @@ func (s *InteractionSystem) resolveInteraction(w *engine.World, i, j int) Pendin
 	// Cultivator vs cultivator: cp-based personality-driven.
 	if kindI == "cultivator" && kindJ == "cultivator" {
 		if sameSect(agents, i, j) {
+			// Same-sect: no fighting, share rumors (道听途说).
+			shareRumor(&agents.Attrs[i], &agents.Attrs[j], true)
+			shareRumor(&agents.Attrs[j], &agents.Attrs[i], true)
 			return PendingFight{}
 		}
 
@@ -110,6 +113,10 @@ func (s *InteractionSystem) resolveInteraction(w *engine.World, i, j int) Pendin
 		if desireJ > threshold {
 			return PendingFight{Attacker: j, Defender: i}
 		}
+
+		// No fight: peaceful meeting, share rumors between different sects.
+		shareRumor(&agents.Attrs[i], &agents.Attrs[j], false)
+		shareRumor(&agents.Attrs[j], &agents.Attrs[i], false)
 	}
 
 	return PendingFight{}

@@ -856,20 +856,23 @@ func TestMovementProbabilityScalesWithCellSpirit(t *testing.T) {
 	}
 }
 
-func TestLowQiCultivatorMovesLessUnlessCellSpiritIsPoor(t *testing.T) {
+func TestLowQiCultivatorMovesMoreInAdequateCell(t *testing.T) {
 	env := engine.NewGrid(1, 1)
 	env.SetEnv1(0, 0, 100)
 	attrs := engine.NewAttrBag()
 	attrs.Num["qi"] = 40
 	attrs.Num["qi_max"] = 100
 
+	// Adequate cell (spirit>=25%): low qi should INCREASE movement probability.
+	// qiFrac=0.4, cellSpiritFrac=0.5, base=0.5, restlessMultiplier=1.5 → 0.75.
 	env.SetEnv0(0, 0, 50)
 	got := movementProbabilityForCultivator(env, 0, 0, attrs)
-	want := 0.5 * 0.5
+	want := 0.75
 	if math.Abs(got-want) > 1e-12 {
 		t.Fatalf("movement probability for low qi in adequate cell = %v, want %v", got, want)
 	}
 
+	// Poor cell (spirit<25%): no restless bonus, pure base probability.
 	env.SetEnv0(0, 0, 20)
 	if got := movementProbabilityForCultivator(env, 0, 0, attrs); got != 0.8 {
 		t.Fatalf("movement probability for low qi in poor cell = %v, want 0.8", got)

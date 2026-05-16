@@ -115,15 +115,37 @@ func sampleMortalSpawn(rng *engine.RNG, env *engine.Grid, maxPop float64) spawnR
 	if maxPop <= 0 {
 		maxPop = 1
 	}
+
+	// Find the maximum spirit density across all cells for normalization.
+	maxSpirit := 0.0
+	for i := range env.Cells {
+		if env.Cells[i].Env0 > maxSpirit {
+			maxSpirit = env.Cells[i].Env0
+		}
+	}
+	if maxSpirit <= 0 {
+		maxSpirit = 1
+	}
+
+	// Rejection sampling with joint weight: mortal population × spirit density.
+	// This biases new cultivator spawns toward high-spirit areas, creating
+	// natural clustering over time.
 	for tries := 0; tries < 10000; tries++ {
 		idx := rng.Intn(len(env.Cells))
-		if env.Cells[idx].MortalPop <= 0 {
+		cell := &env.Cells[idx]
+		if cell.MortalPop <= 0 {
 			continue
 		}
-		if rng.Float64()*maxPop <= env.Cells[idx].MortalPop {
+		// Joint weight: mortal density (for realistic demographics) × spirit factor.
+		// The spirit factor ranges from 0.3 (low spirit) to 1.0 (highest spirit),
+		// ensuring even low-spirit areas can still spawn occasionally.
+		spiritFactor := 0.3 + 0.7*(cell.Env0/maxSpirit)
+		jointWeight := (cell.MortalPop / maxPop) * spiritFactor
+		if rng.Float64() <= jointWeight {
 			return spawnReq{x: idx % env.Width, y: idx / env.Width}
 		}
 	}
+	// Fallback: pure random (should rarely be reached).
 	idx := rng.Intn(len(env.Cells))
 	return spawnReq{x: idx % env.Width, y: idx / env.Width}
 }
