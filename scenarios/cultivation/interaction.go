@@ -87,6 +87,13 @@ func (s *InteractionSystem) resolveInteraction(w *engine.World, i, j int) Pendin
 			shareRumor(&agents.Attrs[j], &agents.Attrs[i], rumorRelationSameSect)
 			return PendingFight{}
 		}
+		sectI := agents.Attrs[i].Str["sect"]
+		sectJ := agents.Attrs[j].Str["sect"]
+		if hasDiplomacyMissionFor(agents.Attrs[i], sectJ) || hasDiplomacyMissionFor(agents.Attrs[j], sectI) {
+			shareRumor(&agents.Attrs[i], &agents.Attrs[j], rumorRelationDifferentSect)
+			shareRumor(&agents.Attrs[j], &agents.Attrs[i], rumorRelationDifferentSect)
+			return PendingFight{}
+		}
 
 		cfg := DefaultScenarioConfig()
 
@@ -120,6 +127,14 @@ func (s *InteractionSystem) resolveInteraction(w *engine.World, i, j int) Pendin
 	}
 
 	return PendingFight{}
+}
+
+func hasDiplomacyMissionFor(attrs engine.AttrBag, otherSect string) bool {
+	if attrs.Str[sectMissionKey] != sectMissionDiplomacy {
+		return false
+	}
+	targetSect := attrs.Str[sectMissionTargetSect]
+	return targetSect == "" || targetSect == otherSect
 }
 
 func attackDesire(attacker, defender engine.AttrBag) float64 {

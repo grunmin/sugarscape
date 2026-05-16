@@ -85,6 +85,21 @@ type sectSiteRef struct {
 	site  SectSite
 }
 
+type sectMissionTarget struct {
+	x, y       int
+	spirit     float64
+	potential  float64
+	targetSect string
+}
+
+const (
+	sectMissionKey        = "sect_mission"
+	sectMissionTickKey    = "sect_mission_tick"
+	sectMissionTargetSect = "sect_mission_target_sect"
+	sectMissionWander     = "游历"
+	sectMissionDiplomacy  = "合作"
+)
+
 var (
 	sectMu            sync.Mutex
 	sectNames         []string
@@ -232,6 +247,7 @@ func (s *SectSystem) Tick(w *engine.World) {
 		}
 	}
 
+	s.dispatchSectMissions(w, cfg)
 	s.expandSects(w, cfg)
 }
 
@@ -280,6 +296,224 @@ func (s *SectSystem) foundSect(w *engine.World, c *sectCandidate, cfg ScenarioCo
 		X:      c.x,
 		Y:      c.y,
 		Reason: fmt.Sprintf("%s 成立：%d人聚集，金丹%d，元婴%d，%d场战死", name, c.count, c.jindanCount, c.yuanyingCount, c.combatDeaths),
+	})
+}
+
+func (s *SectSystem) dispatchSectMissions(w *engine.World, cfg ScenarioConfig) {
+	interval := cfg.SectMissionCheckEvery
+	if interval <= 0 || w.Clock.Tick%int64(interval) != 0 {
+		return
+	}
+
+	strength := cfg.SectMissionRumorStrength
+	if strength <= 0 {
+		strength = 0.95
+	}
+	for _, name := range SectNames() {
+		used := make(map[int]bool)
+		trait := sectTraitForName(name)
+
+		if target, ok := bestDiplomacyMissionTarget(w, name, cfg); ok {
+			count := assignSectMissionToEligible(
+				w.Next.Agents,
+				name,
+				cfg.SectDiplomatMinRealm,
+				cfg.SectDiplomatDispatchFrac,
+				used,
+				target,
+				sectMissionDiplomacy,
+				strength,
+				w.Clock.Tick,
+			)
+			recordSectMissionEvent(w, name, trait, sectMissionDiplomacy, target, count)
+		}
+
+		if target, ok := bestWanderMissionTarget(w, name, cfg); ok {
+			count := assignSectMissionToEligible(
+				w.Next.Agents,
+				name,
+				cfg.SectWandererMinRealm,
+				cfg.SectWandererDispatchFrac,
+				used,
+				target,
+				sectMissionWander,
+				strength,
+				w.Clock.Tick,
+			)
+			recordSectMissionEvent(w, name, trait, sectMissionWander, target, count)
+		}
+	}
+}
+
+func bestWanderMissionTarget(w *engine.World, name string, cfg ScenarioConfig) (sectMissionTarget, bool) {
+	owned := sectSiteRefsForName(name)
+	if len(owned) == 0 {
+		return sectMissionTarget{}, false
+	}
+
+	step := cfg.SectFormationRadius / 4
+	if step < 4 {
+		step = 4
+	}
+	gridW, gridH := w.Config.GridWidth, w.Config.GridHeight
+	env := w.Next.Env
+	best := sectMissionTarget{}
+	bestScore := -1.0
+	found := false
+	for y := 0; y < gridH; y += step {
+		for x := 0; x < gridW; x += step {
+			if insideOwnedSectSites(x, y, owned, cfg, gridW, gridH) {
+				continue
+			}
+			cell := env.Cells[y*gridW+x]
+			potential := resourceValue(cell.Env0, cell.Env1, cell.Env2, cfg)
+			if potential < 0.6 && !isSectExpansionCell(cell, cfg) {
+				continue
+			}
+			score := potential + 0.05*nearestOwnedSiteDistanceRatio(x, y, owned, gridW, gridH)
+			if !found || score > bestScore {
+				best = sectMissionTarget{x: x, y: y, spirit: cell.Env0, potential: potential}
+				bestScore = score
+				found = true
+			}
+		}
+	}
+	return best, found
+}
+
+func bestDiplomacyMissionTarget(w *engine.World, name string, cfg ScenarioConfig) (sectMissionTarget, bool) {
+	owned := sectSiteRefsForName(name)
+	if len(owned) == 0 {
+		return sectMissionTarget{}, false
+	}
+
+	gridW, gridH := w.Config.GridWidth, w.Config.GridHeight
+	env := w.Next.Env
+	best := sectMissionTarget{}
+	bestScore := -math.MaxFloat64
+	found := false
+	for _, site := range SectSites() {
+		if site.Name == name {
+			continue
+		}
+		cell := env.Cells[engine.Wrap(site.Y, gridH)*gridW+engine.Wrap(site.X, gridW)]
+		distRatio := nearestOwnedSiteDistanceRatio(site.X, site.Y, owned, gridW, gridH)
+		score := site.Potential - 0.10*distRatio
+		if !found || score > bestScore {
+			best = sectMissionTarget{
+				x:          site.X,
+				y:          site.Y,
+				spirit:     cell.Env0,
+				potential:  site.Potential,
+				targetSect: site.Name,
+			}
+			bestScore = score
+			found = true
+		}
+	}
+	return best, found
+}
+
+func insideOwnedSectSites(x, y int, refs []sectSiteRef, cfg ScenarioConfig, gridW, gridH int) bool {
+	for _, ref := range refs {
+		radius := ref.site.Radius
+		if radius <= 0 {
+			radius = cfg.SectFormationInfluenceRadius
+		}
+		if toroidalDistanceSq(x, y, ref.site.X, ref.site.Y, gridW, gridH) <= radius*radius {
+			return true
+		}
+	}
+	return false
+}
+
+func assignSectMissionToEligible(
+	agents *engine.AgentStore,
+	sect string,
+	minRealm int,
+	frac float64,
+	used map[int]bool,
+	target sectMissionTarget,
+	mission string,
+	strength float64,
+	tick int64,
+) int {
+	indices := sectMissionMembers(agents, sect, minRealm, used)
+	count := sectMissionDispatchCount(len(indices), frac)
+	if count > len(indices) {
+		count = len(indices)
+	}
+	for _, idx := range indices[:count] {
+		assignSectMissionTarget(agents, idx, target, mission, strength, tick)
+		used[idx] = true
+	}
+	return count
+}
+
+func sectMissionMembers(agents *engine.AgentStore, sect string, minRealm int, used map[int]bool) []int {
+	if minRealm <= 0 {
+		minRealm = 1
+	}
+	members := sortedSectMembersByPower(agents, sect)
+	out := members[:0]
+	for _, idx := range members {
+		if used[idx] {
+			continue
+		}
+		if int(agents.Attrs[idx].Num["realm"]) < minRealm {
+			continue
+		}
+		out = append(out, idx)
+	}
+	return out
+}
+
+func sectMissionDispatchCount(eligible int, frac float64) int {
+	if eligible <= 0 || frac <= 0 {
+		return 0
+	}
+	count := int(math.Ceil(float64(eligible) * frac))
+	if count < 1 {
+		count = 1
+	}
+	if count > eligible {
+		count = eligible
+	}
+	return count
+}
+
+func assignSectMissionTarget(agents *engine.AgentStore, idx int, target sectMissionTarget, mission string, strength float64, tick int64) {
+	attrs := &agents.Attrs[idx]
+	attrs.Num[rumorKeyX] = float64(target.x)
+	attrs.Num[rumorKeyY] = float64(target.y)
+	attrs.Num[rumorKeyStrength] = strength
+	attrs.Num[rumorKeySpirit] = target.spirit
+	attrs.Num[sectMissionTickKey] = float64(tick)
+	attrs.Str[sectMissionKey] = mission
+	if target.targetSect == "" {
+		delete(attrs.Str, sectMissionTargetSect)
+	} else {
+		attrs.Str[sectMissionTargetSect] = target.targetSect
+	}
+}
+
+func recordSectMissionEvent(w *engine.World, name string, trait SectTrait, mission string, target sectMissionTarget, count int) {
+	if count <= 0 {
+		return
+	}
+	eventTick := w.Clock.Tick + 1
+	reason := fmt.Sprintf("%s 派出%d名弟子%s至(%d,%d)", name, count, mission, target.x, target.y)
+	if mission == sectMissionDiplomacy && target.targetSect != "" {
+		reason = fmt.Sprintf("%s 派出%d名弟子前往%s合作", name, count, target.targetSect)
+	}
+	w.Stats.RecordNotableEvent(engine.NotableEvent{
+		Tick:   eventTick,
+		Year:   float64(eventTick) / float64(w.Config.TicksPerYear),
+		Kind:   "宗门任务",
+		Realm:  trait.Style,
+		X:      target.x,
+		Y:      target.y,
+		Reason: reason,
 	})
 }
 
@@ -960,8 +1194,18 @@ func siteIndexFor(target SectSite) int {
 }
 
 func isSectFormationCell(cell engine.Cell, cfg ScenarioConfig) bool {
+	if !cellMeetsSpiritGrade(cell, cfg, cfg.SectFormationMinSpiritGrade) {
+		return false
+	}
 	return cell.Env1 >= cfg.SpiritMax+cfg.SectFormationMinSpiritMaxBonus ||
 		cell.Env2 >= cfg.SpiritRegenRate+cfg.SectFormationMinRegenBonus
+}
+
+func cellMeetsSpiritGrade(cell engine.Cell, cfg ScenarioConfig, minLevel int) bool {
+	if minLevel <= 0 {
+		return true
+	}
+	return spiritGradeForSpirit(cell.Env0, cfg).Level >= minLevel
 }
 
 func sectCellPotential(cell engine.Cell, cfg ScenarioConfig) float64 {

@@ -87,6 +87,9 @@ func moveCultivator(
 
 		// Decide whether to move at all.
 		moveProb := movementProbabilityForCultivator(env, x, y, agents.Attrs[i])
+		if hasSectMissionTravelTarget(agents.Attrs[i], x, y) {
+			moveProb = 1
+		}
 		if rng.Float64() >= moveProb {
 			continue
 		}
@@ -192,6 +195,14 @@ func movementProbabilityForCultivator(env *engine.Grid, x, y int, attrs engine.A
 		return 1
 	}
 	return base
+}
+
+func hasSectMissionTravelTarget(attrs engine.AttrBag, x, y int) bool {
+	if attrs.Str[sectMissionKey] == "" || attrs.Num[rumorKeyStrength] < 0.25 {
+		return false
+	}
+	tx, ty := rumorLocation(&attrs)
+	return tx != x || ty != y
 }
 
 func spiritSeekProbability(attrs engine.AttrBag) float64 {

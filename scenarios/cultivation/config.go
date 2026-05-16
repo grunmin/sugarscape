@@ -104,9 +104,16 @@ type ScenarioConfig struct {
 	SectFormationMinCombatDeaths       int
 	SectFormationMinJindan             int
 	SectFormationMinYuanying           int
+	SectFormationMinSpiritGrade        int
 	SectFormationMinSpiritMaxBonus     float64
 	SectFormationMinRegenBonus         float64
 	SectFormationExistingSectExclusion int
+	SectMissionCheckEvery              int
+	SectWandererMinRealm               int
+	SectWandererDispatchFrac           float64
+	SectDiplomatMinRealm               int
+	SectDiplomatDispatchFrac           float64
+	SectMissionRumorStrength           float64
 	SectExpansionCheckEvery            int
 	SectExpansionSearchRadius          int
 	SectExpansionInfluenceRadius       int
@@ -200,9 +207,16 @@ func DefaultScenarioConfig() ScenarioConfig {
 		SectFormationMinCombatDeaths:       6,
 		SectFormationMinJindan:             4,
 		SectFormationMinYuanying:           1,
+		SectFormationMinSpiritGrade:        3,
 		SectFormationMinSpiritMaxBonus:     70,
 		SectFormationMinRegenBonus:         0.07,
 		SectFormationExistingSectExclusion: 120,
+		SectMissionCheckEvery:              120,
+		SectWandererMinRealm:               2,
+		SectWandererDispatchFrac:           0.08,
+		SectDiplomatMinRealm:               3,
+		SectDiplomatDispatchFrac:           0.05,
+		SectMissionRumorStrength:           0.95,
 		SectExpansionCheckEvery:            40,
 		SectExpansionSearchRadius:          96,
 		SectExpansionInfluenceRadius:       28,

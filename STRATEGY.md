@@ -232,6 +232,7 @@
 - 初始宗门数量为 0。
 - 每 `[SectFormationCheckEvery=20]` tick 检查一次候选聚集地。
 - 候选地必须位于高灵气资源：
+  - 当前灵气品级至少为 `[SectFormationMinSpiritGrade=3]`，即上品或以上；
   - `Env1 >= SpiritMax + [SectFormationMinSpiritMaxBonus=70]`，或
   - `Env2 >= SpiritRegenRate + [SectFormationMinRegenBonus=0.07]`
 - 以 `[SectFormationRadius=16]` 为聚集半径划分候选区域。
@@ -248,6 +249,13 @@
   - 后续在宗门影响半径内转化的新练气修士会加入最近宗门。
 - 每个宗门的战力值：
   - `sum(该宗门所有存活修士 combat_power²)`
+- 宗门任务：
+  - 每 `[SectMissionCheckEvery=120]` tick 下发一次。
+  - 宗门会派出筑基及以上弟子出门游历，派出比例为 `[SectWandererDispatchFrac=0.08]`，至少 1 人；目标为宗门地界外评分最高的高灵区域。
+  - 若世界中存在其他宗门，宗门会派出金丹及以上弟子前往其他宗门合作，派出比例为 `[SectDiplomatDispatchFrac=0.05]`，至少 1 人。
+  - 宗门任务以强度 `[SectMissionRumorStrength=0.95]` 写入弟子的远程目标；游历和合作弟子会沿用移动系统中的传闻目标机制前往目标区域。
+  - 宗门任务目标会覆盖高灵驻地的低移动倾向，确保被派出的弟子实际离开驻地。
+  - 执行合作任务的弟子与异宗修士接触时优先共享传闻，不主动进入普通敌对判定。
 - 宗门扩张：
   - 每 `[SectExpansionCheckEvery=40]` tick 评估一次。
   - 宗门至少需要 `[SectExpansionMinMembers=90]` 名存活成员才会考虑扩张。

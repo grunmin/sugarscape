@@ -830,6 +830,9 @@ func TestSectDefaultsMatchStrategy(t *testing.T) {
 	if cfg.SectFormationMinYuanying != 1 {
 		t.Fatalf("sect formation yuanying leaders = %d, want 1", cfg.SectFormationMinYuanying)
 	}
+	if cfg.SectFormationMinSpiritGrade != 3 {
+		t.Fatalf("sect formation min spirit grade = %d, want 3", cfg.SectFormationMinSpiritGrade)
+	}
 	if cfg.SectFormationMinSpiritMaxBonus != 70 {
 		t.Fatalf("sect formation spirit max bonus = %v, want 70", cfg.SectFormationMinSpiritMaxBonus)
 	}
@@ -838,6 +841,24 @@ func TestSectDefaultsMatchStrategy(t *testing.T) {
 	}
 	if cfg.SectFormationExistingSectExclusion != 120 {
 		t.Fatalf("sect formation exclusion radius = %d, want 120", cfg.SectFormationExistingSectExclusion)
+	}
+	if cfg.SectMissionCheckEvery != 120 {
+		t.Fatalf("sect mission interval = %d, want 120", cfg.SectMissionCheckEvery)
+	}
+	if cfg.SectWandererMinRealm != 2 {
+		t.Fatalf("sect wanderer min realm = %d, want 2", cfg.SectWandererMinRealm)
+	}
+	if cfg.SectWandererDispatchFrac != 0.08 {
+		t.Fatalf("sect wanderer dispatch fraction = %v, want 0.08", cfg.SectWandererDispatchFrac)
+	}
+	if cfg.SectDiplomatMinRealm != 3 {
+		t.Fatalf("sect diplomat min realm = %d, want 3", cfg.SectDiplomatMinRealm)
+	}
+	if cfg.SectDiplomatDispatchFrac != 0.05 {
+		t.Fatalf("sect diplomat dispatch fraction = %v, want 0.05", cfg.SectDiplomatDispatchFrac)
+	}
+	if cfg.SectMissionRumorStrength != 0.95 {
+		t.Fatalf("sect mission rumor strength = %v, want 0.95", cfg.SectMissionRumorStrength)
 	}
 	if cfg.SectExpansionCheckEvery != 40 {
 		t.Fatalf("sect expansion interval = %d, want 40", cfg.SectExpansionCheckEvery)
@@ -950,6 +971,7 @@ func TestSectSystemFoundsSectFromHighSpiritCluster(t *testing.T) {
 	scnCfg := DefaultScenarioConfig()
 
 	x, y := 10, 10
+	w.Next.Env.SetEnv0(x, y, scnCfg.SpiritMax)
 	w.Next.Env.SetEnv1(x, y, scnCfg.SpiritMax+scnCfg.BlessedLandMaxBonus)
 	w.Next.Env.SetEnv2(x, y, scnCfg.SpiritRegenRate+scnCfg.BlessedLandRegenBonus)
 	for i := 0; i < scnCfg.SectFormationMinCultivators; i++ {
@@ -1008,6 +1030,7 @@ func TestSectSystemRequiresHighRealmFounders(t *testing.T) {
 	scnCfg := DefaultScenarioConfig()
 
 	x, y := 10, 10
+	w.Next.Env.SetEnv0(x, y, scnCfg.SpiritMax)
 	w.Next.Env.SetEnv1(x, y, scnCfg.SpiritMax+scnCfg.BlessedLandMaxBonus)
 	w.Next.Env.SetEnv2(x, y, scnCfg.SpiritRegenRate+scnCfg.BlessedLandRegenBonus)
 	for i := 0; i < scnCfg.SectFormationMinCultivators; i++ {
@@ -1036,6 +1059,162 @@ func TestSectSystemRequiresHighRealmFounders(t *testing.T) {
 
 	if got := len(SectNames()); got != 1 {
 		t.Fatalf("sect count after yuanying founder = %d, want 1", got)
+	}
+}
+
+func TestSectFormationRequiresUpperGradeSpirit(t *testing.T) {
+	cfg := DefaultScenarioConfig()
+	cell := engine.Cell{
+		Env0: cfg.SpiritMax - 1,
+		Env1: cfg.SpiritMax + cfg.BlessedLandMaxBonus,
+		Env2: cfg.SpiritRegenRate + cfg.BlessedLandRegenBonus,
+	}
+	if isSectFormationCell(cell, cfg) {
+		t.Fatal("formation cell with high capacity but below upper-grade spirit = true, want false")
+	}
+
+	cell.Env0 = cfg.SpiritMax
+	if !isSectFormationCell(cell, cfg) {
+		t.Fatal("formation cell at upper-grade spirit = false, want true")
+	}
+}
+
+func TestSectMissionsSendZhujiWanderers(t *testing.T) {
+	resetSectState()
+	defer resetSectState()
+
+	cfg := engine.DefaultEngineConfig()
+	cfg.GridWidth = 120
+	cfg.GridHeight = 120
+	cfg.NumWorkers = 1
+	w := engine.NewWorld(cfg)
+	scnCfg := DefaultScenarioConfig()
+
+	name := "开山宗1"
+	trait := SectTrait{Style: "开山", RecruitMultiplier: 1, PowerRecruitMultiplier: 1, BreakthroughMultiplier: 1}
+	registerTestSect(name, trait, SectSite{Name: name, Style: "开山", Kind: "立宗", X: 12, Y: 12, Radius: scnCfg.SectFormationInfluenceRadius})
+	for i := 0; i < 5; i++ {
+		attrs := engine.NewAttrBag()
+		attrs.Str["sect"] = name
+		attrs.Num["realm"] = 2
+		attrs.Num["combat_power"] = float64(10 - i)
+		w.Next.Agents.Add("cultivator", 12, 12, attrs)
+	}
+	for i := 0; i < 3; i++ {
+		attrs := engine.NewAttrBag()
+		attrs.Str["sect"] = name
+		attrs.Num["realm"] = 1
+		attrs.Num["combat_power"] = 1
+		w.Next.Agents.Add("cultivator", 12, 12, attrs)
+	}
+	w.Next.Env.SetEnv0(80, 80, scnCfg.SpiritMax*1.5)
+	w.Next.Env.SetEnv1(80, 80, scnCfg.SpiritMax+scnCfg.BlessedLandMaxBonus)
+	w.Next.Env.SetEnv2(80, 80, scnCfg.SpiritRegenRate+scnCfg.BlessedLandRegenBonus)
+
+	w.Clock.Tick = int64(scnCfg.SectMissionCheckEvery)
+	(&SectSystem{}).Tick(w)
+
+	dispatched := 0
+	for i := 0; i < 5; i++ {
+		attrs := w.Next.Agents.Attrs[i]
+		if attrs.Str[sectMissionKey] != sectMissionWander {
+			continue
+		}
+		dispatched++
+		if attrs.Num[rumorKeyX] != 80 || attrs.Num[rumorKeyY] != 80 {
+			t.Fatalf("wander target = (%.0f,%.0f), want (80,80)", attrs.Num[rumorKeyX], attrs.Num[rumorKeyY])
+		}
+		if attrs.Num[rumorKeyStrength] != scnCfg.SectMissionRumorStrength {
+			t.Fatalf("wander rumor strength = %v, want %v", attrs.Num[rumorKeyStrength], scnCfg.SectMissionRumorStrength)
+		}
+	}
+	if dispatched != 1 {
+		t.Fatalf("wanderers dispatched = %d, want 1", dispatched)
+	}
+	for i := 5; i < 8; i++ {
+		if got := w.Next.Agents.Attrs[i].Str[sectMissionKey]; got != "" {
+			t.Fatalf("realm-1 member mission = %q, want none", got)
+		}
+	}
+}
+
+func TestSectMissionsSendJindanDiplomatsToOtherSect(t *testing.T) {
+	resetSectState()
+	defer resetSectState()
+
+	cfg := engine.DefaultEngineConfig()
+	cfg.GridWidth = 120
+	cfg.GridHeight = 120
+	cfg.NumWorkers = 1
+	w := engine.NewWorld(cfg)
+	scnCfg := DefaultScenarioConfig()
+
+	home := "灵脉宗1"
+	other := "开山宗2"
+	sectMu.Lock()
+	sectNames = append(sectNames, home, other)
+	sectTraits = append(sectTraits,
+		SectTrait{Style: "灵脉", RecruitMultiplier: 1, PowerRecruitMultiplier: 1, BreakthroughMultiplier: 1.2},
+		SectTrait{Style: "开山", RecruitMultiplier: 1, PowerRecruitMultiplier: 1, BreakthroughMultiplier: 1},
+	)
+	sectSites = append(sectSites,
+		SectSite{Name: home, Style: "灵脉", Kind: "立宗", X: 12, Y: 12, Radius: scnCfg.SectFormationInfluenceRadius},
+		SectSite{Name: other, Style: "开山", Kind: "立宗", X: 80, Y: 12, Radius: scnCfg.SectFormationInfluenceRadius},
+	)
+	sectMu.Unlock()
+
+	for i := 0; i < 4; i++ {
+		attrs := engine.NewAttrBag()
+		attrs.Str["sect"] = home
+		attrs.Num["realm"] = 3
+		attrs.Num["combat_power"] = float64(20 - i)
+		w.Next.Agents.Add("cultivator", 12, 12, attrs)
+	}
+	for i := 0; i < 4; i++ {
+		attrs := engine.NewAttrBag()
+		attrs.Str["sect"] = home
+		attrs.Num["realm"] = 2
+		attrs.Num["combat_power"] = float64(5 - i)
+		w.Next.Agents.Add("cultivator", 12, 12, attrs)
+	}
+
+	w.Clock.Tick = int64(scnCfg.SectMissionCheckEvery)
+	(&SectSystem{}).Tick(w)
+
+	diplomats := 0
+	for i := 0; i < 4; i++ {
+		attrs := w.Next.Agents.Attrs[i]
+		if attrs.Str[sectMissionKey] != sectMissionDiplomacy {
+			continue
+		}
+		diplomats++
+		if attrs.Str[sectMissionTargetSect] != other {
+			t.Fatalf("diplomat target sect = %q, want %q", attrs.Str[sectMissionTargetSect], other)
+		}
+		if attrs.Num[rumorKeyX] != 80 || attrs.Num[rumorKeyY] != 12 {
+			t.Fatalf("diplomat target = (%.0f,%.0f), want (80,12)", attrs.Num[rumorKeyX], attrs.Num[rumorKeyY])
+		}
+	}
+	if diplomats != 1 {
+		t.Fatalf("diplomats dispatched = %d, want 1", diplomats)
+	}
+	for i := 4; i < 8; i++ {
+		if got := w.Next.Agents.Attrs[i].Str[sectMissionKey]; got == sectMissionDiplomacy {
+			t.Fatalf("zhuji member mission = %q, want not diplomacy", got)
+		}
+	}
+}
+
+func TestDiplomacyMissionOnlyPacifiesTargetSect(t *testing.T) {
+	attrs := engine.NewAttrBag()
+	attrs.Str[sectMissionKey] = sectMissionDiplomacy
+	attrs.Str[sectMissionTargetSect] = "灵脉宗2"
+
+	if !hasDiplomacyMissionFor(attrs, "灵脉宗2") {
+		t.Fatal("diplomacy mission for target sect = false, want true")
+	}
+	if hasDiplomacyMissionFor(attrs, "战盟宗3") {
+		t.Fatal("diplomacy mission for unrelated sect = true, want false")
 	}
 }
 
@@ -1345,6 +1524,37 @@ func TestMovementProbabilityScalesWithCellSpirit(t *testing.T) {
 	env.SetEnv0(0, 0, 0)
 	if got := movementProbability(env, 0, 0); got != 1 {
 		t.Fatalf("movement probability at zero spirit = %v, want 1", got)
+	}
+}
+
+func TestSectMissionTargetForcesTravelFromRichCell(t *testing.T) {
+	cfg := engine.DefaultEngineConfig()
+	cfg.GridWidth = 10
+	cfg.GridHeight = 10
+	cfg.NumWorkers = 1
+	w := engine.NewWorld(cfg)
+	scnCfg := DefaultScenarioConfig()
+
+	w.Next.Env.SetEnv0(1, 1, scnCfg.SpiritMax)
+	w.Next.Env.SetEnv1(1, 1, scnCfg.SpiritMax+scnCfg.BlessedLandMaxBonus)
+	w.Next.Env.SetEnv2(1, 1, scnCfg.SpiritRegenRate+scnCfg.BlessedLandRegenBonus)
+	attrs := engine.NewAttrBag()
+	attrs.Num["realm"] = 1
+	attrs.Str[sectMissionKey] = sectMissionWander
+	attrs.Num[rumorKeyX] = 5
+	attrs.Num[rumorKeyY] = 1
+	attrs.Num[rumorKeyStrength] = scnCfg.SectMissionRumorStrength
+	w.Next.Agents.Add("cultivator", 1, 1, attrs)
+
+	if got := movementProbabilityForCultivator(w.Next.Env, 1, 1, attrs); got != 0 {
+		t.Fatalf("rich-cell movement probability = %v, want 0 before mission override", got)
+	}
+
+	w.Grid.Rebuild(w.Next.Agents)
+	(&MovementSystem{}).Tick(w)
+
+	if w.Next.Agents.X[0] != 2 || w.Next.Agents.Y[0] != 1 {
+		t.Fatalf("mission traveler position = (%d,%d), want first step toward (5,1)", w.Next.Agents.X[0], w.Next.Agents.Y[0])
 	}
 }
 
