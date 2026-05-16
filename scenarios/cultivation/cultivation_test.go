@@ -1005,6 +1005,69 @@ func TestStationaryCultivatorAbsorbsSpirit(t *testing.T) {
 	}
 }
 
+func TestCultivationCreatesRumorFromObservedSpirit(t *testing.T) {
+	cfg := engine.DefaultEngineConfig()
+	cfg.GridWidth = 1
+	cfg.GridHeight = 1
+	cfg.NumWorkers = 1
+
+	w := engine.NewWorld(cfg)
+	w.Next.Env.SetEnv0(0, 0, 70)
+	w.Next.Env.SetEnv1(0, 0, 100)
+	attrs := engine.NewAttrBag()
+	attrs.Num["realm"] = 1
+	attrs.Num["qi"] = 0
+	attrs.Num["qi_max"] = 200
+	attrs.Num["cultivation_speed"] = 1
+	attrs.Num["moved_this_tick"] = 0
+	w.Next.Agents.Add("cultivator", 0, 0, attrs)
+
+	(&CultivationSystem{}).Tick(w)
+
+	got := w.Next.Agents.Attrs[0].Num[rumorKeyStrength]
+	if math.Abs(got-0.7) > 1e-12 {
+		t.Fatalf("rumor strength = %v, want 0.7 from pre-absorb spirit", got)
+	}
+}
+
+func TestVerifyRumorOnlyClearsAtRumoredLocation(t *testing.T) {
+	attrs := engine.NewAttrBag()
+	createRumor(&attrs, 5, 5, 80, 100)
+
+	verifyRumorAtLocation(&attrs, 1, 1, 20, 100)
+	if got := attrs.Num[rumorKeyStrength]; got != 0.8 {
+		t.Fatalf("rumor strength away from target = %v, want 0.8", got)
+	}
+
+	verifyRumorAtLocation(&attrs, 5, 5, 20, 100)
+	if got := attrs.Num[rumorKeyStrength]; got != 0 {
+		t.Fatalf("rumor strength at stale target = %v, want cleared", got)
+	}
+}
+
+func TestShareRumorUsesRelationshipEfficiency(t *testing.T) {
+	from := engine.NewAttrBag()
+	createRumor(&from, 2, 3, 100, 100)
+
+	stranger := engine.NewAttrBag()
+	shareRumor(&from, &stranger, rumorRelationStranger)
+	if got := stranger.Num[rumorKeyStrength]; got != 0.4 {
+		t.Fatalf("stranger rumor strength = %v, want 0.4", got)
+	}
+
+	differentSect := engine.NewAttrBag()
+	shareRumor(&from, &differentSect, rumorRelationDifferentSect)
+	if got := differentSect.Num[rumorKeyStrength]; got != 0.6 {
+		t.Fatalf("different-sect rumor strength = %v, want 0.6", got)
+	}
+
+	sameSect := engine.NewAttrBag()
+	shareRumor(&from, &sameSect, rumorRelationSameSect)
+	if got := sameSect.Num[rumorKeyStrength]; got != 0.9 {
+		t.Fatalf("same-sect rumor strength = %v, want 0.9", got)
+	}
+}
+
 func TestCultivatorAbsorbIsCappedByRemainingCapacity(t *testing.T) {
 	cfg := engine.DefaultEngineConfig()
 	cfg.GridWidth = 1

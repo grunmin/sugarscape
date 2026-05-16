@@ -67,6 +67,7 @@ func (s *CultivationSystem) Tick(w *engine.World) {
 				cellLock := &s.cellLocks[cellIdx%len(s.cellLocks)]
 				cellLock.Lock()
 				spirit := env.Cells[cellIdx].Env0
+				maxSpirit := env.Cells[cellIdx].Env1
 				baseAbsorb := spirit * attrs.Num["cultivation_speed"] * cfg.CultivationSpeed
 				absorb := baseAbsorb * rc.CultSpeedMult
 				if absorb > spirit {
@@ -80,10 +81,11 @@ func (s *CultivationSystem) Tick(w *engine.World) {
 
 				attrs.Num["qi"] += absorb
 
+				// Rumor verification: if at a rumored location, check the observed
+				// spirit before this cultivator consumes from the cell.
+				verifyRumorAtLocation(attrs, x, y, spirit, maxSpirit)
 				// Rumor creation: if this is a notably high-spirit cell, remember it.
-				createRumor(attrs, x, y, env.Cells[cellIdx].Env0, env.Env1(x, y))
-				// Rumor verification: if at rumored location, check if still valid.
-				verifyRumorAtLocation(attrs, env.Cells[cellIdx].Env0, env.Env1(x, y))
+				createRumor(attrs, x, y, spirit, maxSpirit)
 			}
 
 			if attrs.Num["qi"] > qiMax {

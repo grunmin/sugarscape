@@ -83,8 +83,8 @@ func (s *InteractionSystem) resolveInteraction(w *engine.World, i, j int) Pendin
 	if kindI == "cultivator" && kindJ == "cultivator" {
 		if sameSect(agents, i, j) {
 			// Same-sect: no fighting, share rumors (道听途说).
-			shareRumor(&agents.Attrs[i], &agents.Attrs[j], true)
-			shareRumor(&agents.Attrs[j], &agents.Attrs[i], true)
+			shareRumor(&agents.Attrs[i], &agents.Attrs[j], rumorRelationSameSect)
+			shareRumor(&agents.Attrs[j], &agents.Attrs[i], rumorRelationSameSect)
 			return PendingFight{}
 		}
 
@@ -115,8 +115,8 @@ func (s *InteractionSystem) resolveInteraction(w *engine.World, i, j int) Pendin
 		}
 
 		// No fight: peaceful meeting, share rumors between different sects.
-		shareRumor(&agents.Attrs[i], &agents.Attrs[j], false)
-		shareRumor(&agents.Attrs[j], &agents.Attrs[i], false)
+		shareRumor(&agents.Attrs[i], &agents.Attrs[j], rumorRelationDifferentSect)
+		shareRumor(&agents.Attrs[j], &agents.Attrs[i], rumorRelationDifferentSect)
 	}
 
 	return PendingFight{}
