@@ -7,6 +7,21 @@ import (
 	"github.com/runmin/sugarscape/engine"
 )
 
+func registerTestSect(name string, trait SectTrait, site SectSite) {
+	resetSectState()
+	sectMu.Lock()
+	defer sectMu.Unlock()
+	sectNames = append(sectNames, name)
+	sectTraits = append(sectTraits, trait)
+	if site.Name == "" {
+		site.Name = name
+	}
+	if site.Style == "" {
+		site.Style = trait.Style
+	}
+	sectSites = append(sectSites, site)
+}
+
 func TestSetupNormalizesMortalPopulation(t *testing.T) {
 	cfg := engine.DefaultEngineConfig()
 	cfg.GridWidth = 40
@@ -77,7 +92,7 @@ func TestSetupCreatesLayeredHighSpiritRegions(t *testing.T) {
 
 func TestBreakthroughUsesNewRealmQiMax(t *testing.T) {
 	oldBreakthrough := DefaultRealms[0].BreakthroughBase
-	DefaultRealms[0].BreakthroughBase = 1.0
+	DefaultRealms[0].BreakthroughBase = 2.0
 	defer func() { DefaultRealms[0].BreakthroughBase = oldBreakthrough }()
 
 	cfg := engine.DefaultEngineConfig()
@@ -215,15 +230,19 @@ func TestDefaultBreakthroughThresholdsMatchStrategy(t *testing.T) {
 func TestSectBreakthroughProbabilityBonus(t *testing.T) {
 	cfg := DefaultScenarioConfig()
 	rc := DefaultRealms[0]
+	trait := SectTrait{Style: "灵脉", RecruitMultiplier: 1, PowerRecruitMultiplier: 1, BreakthroughMultiplier: 1.2}
+	registerTestSect("灵脉宗1", trait, SectSite{Name: "灵脉宗1", Style: "灵脉", X: 5, Y: 5, Radius: 36})
+	defer resetSectState()
+
 	loose := engine.NewAttrBag()
 	sect := engine.NewAttrBag()
-	sect.Str["sect"] = "宗门1"
+	sect.Str["sect"] = "灵脉宗1"
 
-	if got := breakthroughProbability(rc, loose, cfg, 10); got != rc.BreakthroughBase {
-		t.Fatalf("loose breakthrough probability = %v, want %v", got, rc.BreakthroughBase)
+	wantLoose := rc.BreakthroughBase * cfg.LooseBreakthroughMultiplier
+	if got := breakthroughProbability(rc, loose, cfg, 10); got != wantLoose {
+		t.Fatalf("loose breakthrough probability = %v, want %v", got, wantLoose)
 	}
-	want := rc.BreakthroughBase * 1.3
-	want *= sectTraitForName("宗门1").BreakthroughMultiplier
+	want := rc.BreakthroughBase * (1 + cfg.SectBreakthroughBonus) * trait.BreakthroughMultiplier
 	if got := breakthroughProbability(rc, sect, cfg, 0); got != want {
 		t.Fatalf("sect breakthrough probability = %v, want %v", got, want)
 	}
@@ -232,8 +251,11 @@ func TestSectBreakthroughProbabilityBonus(t *testing.T) {
 func TestSectMentorsIncreaseBreakthroughProbability(t *testing.T) {
 	cfg := DefaultScenarioConfig()
 	rc := DefaultRealms[0]
+	registerTestSect("开山宗1", SectTrait{Style: "开山", RecruitMultiplier: 1, PowerRecruitMultiplier: 1, BreakthroughMultiplier: 1}, SectSite{})
+	defer resetSectState()
+
 	sect := engine.NewAttrBag()
-	sect.Str["sect"] = "宗门1"
+	sect.Str["sect"] = "开山宗1"
 
 	withoutMentor := breakthroughProbability(rc, sect, cfg, 0)
 	withMentor := breakthroughProbability(rc, sect, cfg, 25)
@@ -278,7 +300,7 @@ func TestOneRealmHigherMentorsOnlyCountSameSectNextRealm(t *testing.T) {
 
 func TestBreakthroughToHuashenRecordsBirthReason(t *testing.T) {
 	oldBreakthrough := DefaultRealms[3].BreakthroughBase
-	DefaultRealms[3].BreakthroughBase = 1.0
+	DefaultRealms[3].BreakthroughBase = 2.0
 	defer func() { DefaultRealms[3].BreakthroughBase = oldBreakthrough }()
 
 	cfg := engine.DefaultEngineConfig()
@@ -311,7 +333,7 @@ func TestBreakthroughToHuashenRecordsBirthReason(t *testing.T) {
 
 func TestBreakthroughToYuanyingRecordsBirthReason(t *testing.T) {
 	oldBreakthrough := DefaultRealms[2].BreakthroughBase
-	DefaultRealms[2].BreakthroughBase = 1.0
+	DefaultRealms[2].BreakthroughBase = 2.0
 	defer func() { DefaultRealms[2].BreakthroughBase = oldBreakthrough }()
 
 	cfg := engine.DefaultEngineConfig()
@@ -689,9 +711,12 @@ func TestBreakthroughPressureRaisesResourceCompetition(t *testing.T) {
 }
 
 func TestSectDefaultsMatchStrategy(t *testing.T) {
+	resetSectState()
+	defer resetSectState()
+
 	cfg := DefaultScenarioConfig()
-	if cfg.SectMembershipChance != 0.20 {
-		t.Fatalf("sect membership chance = %v, want 0.20", cfg.SectMembershipChance)
+	if cfg.LooseBreakthroughMultiplier != 0.65 {
+		t.Fatalf("loose breakthrough multiplier = %v, want 0.65", cfg.LooseBreakthroughMultiplier)
 	}
 	if cfg.SectAllyCombatAssist != 0.25 {
 		t.Fatalf("sect ally combat assist = %v, want 0.25", cfg.SectAllyCombatAssist)
@@ -705,17 +730,35 @@ func TestSectDefaultsMatchStrategy(t *testing.T) {
 	if cfg.SectMentorScale != 10 {
 		t.Fatalf("sect mentor scale = %v, want 10", cfg.SectMentorScale)
 	}
-	if cfg.SectRecruitBaseWeight != 40 {
-		t.Fatalf("sect recruit base weight = %v, want 40", cfg.SectRecruitBaseWeight)
+	if cfg.SectFormationCheckEvery != 10 {
+		t.Fatalf("sect formation check interval = %d, want 10", cfg.SectFormationCheckEvery)
 	}
-	if cfg.SectRecruitCombatExponent != 0.55 {
-		t.Fatalf("sect recruit combat exponent = %v, want 0.55", cfg.SectRecruitCombatExponent)
+	if cfg.SectFormationRadius != 18 {
+		t.Fatalf("sect formation radius = %d, want 18", cfg.SectFormationRadius)
 	}
-	if len(sectNames) != 7 {
-		t.Fatalf("sect count = %d, want 7", len(sectNames))
+	if cfg.SectFormationInfluenceRadius != 36 {
+		t.Fatalf("sect formation influence radius = %d, want 36", cfg.SectFormationInfluenceRadius)
 	}
-	if len(sectTraits) != len(sectNames) {
-		t.Fatalf("sect trait count = %d, want %d", len(sectTraits), len(sectNames))
+	if cfg.SectFormationMinCultivators != 35 {
+		t.Fatalf("sect formation min cultivators = %d, want 35", cfg.SectFormationMinCultivators)
+	}
+	if cfg.SectFormationMinSustainTicks != 80 {
+		t.Fatalf("sect formation sustain ticks = %d, want 80", cfg.SectFormationMinSustainTicks)
+	}
+	if cfg.SectFormationMinCombatDeaths != 3 {
+		t.Fatalf("sect formation combat deaths = %d, want 3", cfg.SectFormationMinCombatDeaths)
+	}
+	if cfg.SectFormationMinSpiritMaxBonus != 45 {
+		t.Fatalf("sect formation spirit max bonus = %v, want 45", cfg.SectFormationMinSpiritMaxBonus)
+	}
+	if cfg.SectFormationMinRegenBonus != 0.04 {
+		t.Fatalf("sect formation regen bonus = %v, want 0.04", cfg.SectFormationMinRegenBonus)
+	}
+	if cfg.SectFormationExistingSectExclusion != 72 {
+		t.Fatalf("sect formation exclusion radius = %d, want 72", cfg.SectFormationExistingSectExclusion)
+	}
+	if len(SectNames()) != 0 {
+		t.Fatalf("initial sect count = %d, want 0", len(SectNames()))
 	}
 }
 
@@ -783,30 +826,57 @@ func TestSectCombatStatsUseSquaredCombatPower(t *testing.T) {
 	}
 }
 
-func TestSectRecruitWeightsUseTraitsAndCombatValue(t *testing.T) {
-	w := engine.NewWorld(engine.DefaultEngineConfig())
-	a := engine.NewAttrBag()
-	a.Num["combat_power"] = 3
-	a.Str["sect"] = "宗门1"
-	b := engine.NewAttrBag()
-	b.Num["combat_power"] = 6
-	b.Str["sect"] = "宗门2"
+func TestSectSystemFoundsSectFromHighSpiritCluster(t *testing.T) {
+	resetSectState()
+	defer resetSectState()
 
-	w.Next.Agents.Add("cultivator", 1, 1, a)
-	w.Next.Agents.Add("cultivator", 1, 1, b)
+	cfg := engine.DefaultEngineConfig()
+	cfg.GridWidth = 100
+	cfg.GridHeight = 100
+	cfg.NumWorkers = 1
+	w := engine.NewWorld(cfg)
+	scnCfg := DefaultScenarioConfig()
 
-	weights := sectRecruitWeights(w.Next.Agents)
-	cfg := DefaultScenarioConfig()
-	want0 := cfg.SectRecruitBaseWeight*sectTraits[0].RecruitMultiplier +
-		math.Pow(9, cfg.SectRecruitCombatExponent)*sectTraits[0].PowerRecruitMultiplier
-	want1 := cfg.SectRecruitBaseWeight*sectTraits[1].RecruitMultiplier +
-		math.Pow(36, cfg.SectRecruitCombatExponent)*sectTraits[1].PowerRecruitMultiplier
-	if math.Abs(weights[0]-want0) > 1e-12 || math.Abs(weights[1]-want1) > 1e-12 {
-		t.Fatalf("sect recruit weights = %v, want first two %.6f and %.6f", weights[:2], want0, want1)
+	x, y := 10, 10
+	w.Next.Env.SetEnv1(x, y, scnCfg.SpiritMax+scnCfg.BlessedLandMaxBonus)
+	w.Next.Env.SetEnv2(x, y, scnCfg.SpiritRegenRate+scnCfg.BlessedLandRegenBonus)
+	for i := 0; i < scnCfg.SectFormationMinCultivators; i++ {
+		attrs := engine.NewAttrBag()
+		attrs.Num["realm"] = 1
+		attrs.Num["combat_power"] = 1
+		w.Next.Agents.Add("cultivator", x, y, attrs)
 	}
-	want2 := cfg.SectRecruitBaseWeight * sectTraits[2].RecruitMultiplier
-	if math.Abs(weights[2]-want2) > 1e-12 {
-		t.Fatalf("empty sect recruit weight = %v, want %v", weights[2], want2)
+	for i := 0; i < scnCfg.SectFormationMinCombatDeaths; i++ {
+		recordSectCandidateDeath(x, y)
+	}
+
+	system := &SectSystem{}
+	for tick := int64(scnCfg.SectFormationCheckEvery); tick <= int64(scnCfg.SectFormationMinSustainTicks); tick += int64(scnCfg.SectFormationCheckEvery) {
+		w.Clock.Tick = tick
+		system.Tick(w)
+	}
+
+	names := SectNames()
+	if len(names) != 1 {
+		t.Fatalf("sect count = %d, want 1", len(names))
+	}
+	if names[0] != "灵脉宗1" {
+		t.Fatalf("sect name = %q, want 灵脉宗1", names[0])
+	}
+	sites := SectSites()
+	if len(sites) != 1 || sites[0].X != x || sites[0].Y != y || sites[0].Deaths != scnCfg.SectFormationMinCombatDeaths {
+		t.Fatalf("sect sites = %+v, want one site at death cluster", sites)
+	}
+	for i := 0; i < scnCfg.SectFormationMinCultivators; i++ {
+		if got := w.Next.Agents.Attrs[i].Str["sect"]; got != names[0] {
+			t.Fatalf("agent %d sect = %q, want %q", i, got, names[0])
+		}
+	}
+
+	spawnCultivator(w, x+1, y)
+	newcomer := w.Next.Agents.Attrs[len(w.Next.Agents.Attrs)-1]
+	if got := newcomer.Str["sect"]; got != names[0] {
+		t.Fatalf("new nearby cultivator sect = %q, want %q", got, names[0])
 	}
 }
 

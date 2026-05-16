@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/runmin/sugarscape/engine"
+	"github.com/runmin/sugarscape/scenarios/cultivation"
 )
 
 //go:embed index.html
@@ -212,62 +213,81 @@ func (d *Dashboard) simulationLoop() {
 
 // StateSnapshot is the complete world state sent to the frontend.
 type StateSnapshot struct {
-	Tick       int64           `json:"tick"`
-	Year       float64         `json:"year"`
-	Width      int             `json:"width"`
-	Height     int             `json:"height"`
-	HMWidth    int             `json:"hmWidth"`
-	HMHeight   int             `json:"hmHeight"`
-	Paused     bool            `json:"paused"`
-	Speed      int             `json:"speed"`
-	Stats      StatsData       `json:"stats"`
-	SpiritMap  string          `json:"spiritMap"`  // base64 encoded uint8
-	MortalMap  string          `json:"mortalMap"`  // base64 encoded uint16
-	SpiritMax  float64         `json:"spiritMax"`  // global max for scale
-	MortalMax  float64         `json:"mortalMax"`  // global max for scale
+	Tick        int64            `json:"tick"`
+	Year        float64          `json:"year"`
+	Width       int              `json:"width"`
+	Height      int              `json:"height"`
+	HMWidth     int              `json:"hmWidth"`
+	HMHeight    int              `json:"hmHeight"`
+	Paused      bool             `json:"paused"`
+	Speed       int              `json:"speed"`
+	Stats       StatsData        `json:"stats"`
+	SpiritMap   string           `json:"spiritMap"` // base64 encoded uint8
+	MortalMap   string           `json:"mortalMap"` // base64 encoded uint16
+	SpiritMax   float64          `json:"spiritMax"` // global max for scale
+	MortalMax   float64          `json:"mortalMax"` // global max for scale
+	SectNames   []string         `json:"sectNames"`
+	SectSites   []SectSiteInfo   `json:"sectSites"`
 	Cultivators []CultivatorInfo `json:"cultivators"`
-	Features   []FeatureInfo   `json:"features"`
-	Tracked    []TrackedAgent  `json:"tracked"`
-	Events     []EventInfo     `json:"events"`
+	Features    []FeatureInfo    `json:"features"`
+	Tracked     []TrackedAgent   `json:"tracked"`
+	Events      []EventInfo      `json:"events"`
 }
 
 // StatsData holds aggregated statistics.
 type StatsData struct {
-	TotalAgents       int                `json:"totalAgents"`
-	TotalCultivators  int                `json:"totalCultivators"`
-	TotalMortals      float64            `json:"totalMortals"`
-	AvgQi             float64            `json:"avgQi"`
-	AvgAge            float64            `json:"avgAge"`
-	AvgCP             float64            `json:"avgCP"`
-	AvgAggression     float64            `json:"avgAggression"`
-	Deaths            int                `json:"deaths"`
-	Births            int                `json:"births"`
-	Breakthroughs     int                `json:"breakthroughs"`
-	MortalConversions int                `json:"mortalConversions"`
-	RealmCounts       map[string]int     `json:"realmCounts"`
-	StrategyCounts    map[string]int     `json:"strategyCounts"`
-	SectStats         []SectStatData     `json:"sectStats"`
+	TotalAgents       int            `json:"totalAgents"`
+	TotalCultivators  int            `json:"totalCultivators"`
+	TotalMortals      float64        `json:"totalMortals"`
+	AvgQi             float64        `json:"avgQi"`
+	AvgAge            float64        `json:"avgAge"`
+	AvgCP             float64        `json:"avgCP"`
+	AvgAggression     float64        `json:"avgAggression"`
+	Deaths            int            `json:"deaths"`
+	Births            int            `json:"births"`
+	Breakthroughs     int            `json:"breakthroughs"`
+	MortalConversions int            `json:"mortalConversions"`
+	RealmCounts       map[string]int `json:"realmCounts"`
+	StrategyCounts    map[string]int `json:"strategyCounts"`
+	SectStats         []SectStatData `json:"sectStats"`
 }
 
 // SectStatData holds per-sect statistics.
 type SectStatData struct {
-	Name        string    `json:"name"`
-	Trait       string    `json:"trait"`
-	Count       int       `json:"count"`
-	CombatValue float64   `json:"combatValue"`
-	MaxCP       float64   `json:"maxCP"`
-	RealmCounts [6]int    `json:"realmCounts"`
+	Name        string  `json:"name"`
+	Trait       string  `json:"trait"`
+	SiteX       int     `json:"siteX"`
+	SiteY       int     `json:"siteY"`
+	Radius      int     `json:"radius"`
+	FoundedTick int64   `json:"foundedTick"`
+	Deaths      int     `json:"deaths"`
+	Count       int     `json:"count"`
+	CombatValue float64 `json:"combatValue"`
+	MaxCP       float64 `json:"maxCP"`
+	RealmCounts [6]int  `json:"realmCounts"`
+}
+
+// SectSiteInfo describes where a dynamically founded sect is centered.
+type SectSiteInfo struct {
+	Name        string `json:"name"`
+	Trait       string `json:"trait"`
+	X           int    `json:"x"`
+	Y           int    `json:"y"`
+	Radius      int    `json:"radius"`
+	FoundedTick int64  `json:"foundedTick"`
+	Deaths      int    `json:"deaths"`
+	Count       int    `json:"count"`
 }
 
 // CultivatorInfo is compact cultivator data for map rendering.
 type CultivatorInfo struct {
-	ID         int     `json:"id"`
-	X          int     `json:"x"`
-	Y          int     `json:"y"`
-	Realm      int     `json:"r"` // realm level 1-5
-	QiFrac     float64 `json:"qf"` // 0-1
-	SectIdx    int     `json:"si"` // -1 if none
-	Strategy   int     `json:"st"` // strategy index
+	ID          int     `json:"id"`
+	X           int     `json:"x"`
+	Y           int     `json:"y"`
+	Realm       int     `json:"r"`  // realm level 1-5
+	QiFrac      float64 `json:"qf"` // 0-1
+	SectIdx     int     `json:"si"` // -1 if none
+	Strategy    int     `json:"st"` // strategy index
 	CombatPower float64 `json:"cp"`
 }
 
@@ -296,14 +316,14 @@ type TrackedAgent struct {
 
 // EventInfo is a notable event for the frontend.
 type EventInfo struct {
-	Tick    int64  `json:"tick"`
+	Tick    int64   `json:"tick"`
 	Year    float64 `json:"year"`
-	Kind    string `json:"kind"`
-	Realm   string `json:"realm"`
-	AgentID int    `json:"agentId"`
-	X       int    `json:"x"`
-	Y       int    `json:"y"`
-	Reason  string `json:"reason"`
+	Kind    string  `json:"kind"`
+	Realm   string  `json:"realm"`
+	AgentID int     `json:"agentId"`
+	X       int     `json:"x"`
+	Y       int     `json:"y"`
+	Reason  string  `json:"reason"`
 }
 
 // Strategy index to name mapping.
@@ -409,7 +429,11 @@ func (d *Dashboard) buildSnapshot() []byte {
 	}
 
 	cultivators := make([]CultivatorInfo, 0, cultCount)
-	sectNames := cultivationSectNames()
+	sectNames := cultivation.SectNames()
+	sectIndex := make(map[string]int, len(sectNames))
+	for si, sn := range sectNames {
+		sectIndex[sn] = si
+	}
 
 	for i := range agents.ID {
 		if !agents.Alive[i] {
@@ -437,10 +461,13 @@ func (d *Dashboard) buildSnapshot() []byte {
 			strategyCounts[strategy]++
 			sect := agents.Attrs[i].Str["sect"]
 			sectIdx := -1
-			for si, sn := range sectNames {
-				if sn == sect {
+			if sect != "" {
+				if si, ok := sectIndex[sect]; ok {
 					sectIdx = si
-					break
+				} else {
+					sectIdx = len(sectNames)
+					sectIndex[sect] = sectIdx
+					sectNames = append(sectNames, sect)
 				}
 			}
 
@@ -471,6 +498,7 @@ func (d *Dashboard) buildSnapshot() []byte {
 
 	// Build sect stats
 	sectStats := buildSectStats(agents, sectNames)
+	sectSites := buildSectSites(sectStats)
 
 	// Collect tracked agents
 	d.trackedMu.RLock()
@@ -528,6 +556,8 @@ func (d *Dashboard) buildSnapshot() []byte {
 		MortalMap:   mortalB64,
 		SpiritMax:   spiritMaxVal,
 		MortalMax:   mortalMaxVal,
+		SectNames:   sectNames,
+		SectSites:   sectSites,
 		Cultivators: cultivators,
 		Features:    d.features,
 		Tracked:     tracked,
@@ -902,16 +932,16 @@ func (d *Dashboard) handleStatsHistory(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	type HistoryPoint struct {
-		Tick            int64   `json:"tick"`
-		Year            float64 `json:"year"`
-		TotalAgents     int     `json:"totalAgents"`
-		TotalCultivators int    `json:"totalCultivators"`
-		TotalMortals    float64 `json:"totalMortals"`
-		AvgQi           float64 `json:"avgQi"`
-		AvgAge          float64 `json:"avgAge"`
-		AvgCP           float64 `json:"avgCP"`
-		Deaths          int     `json:"deaths"`
-		Breakthroughs   int     `json:"breakthroughs"`
+		Tick             int64   `json:"tick"`
+		Year             float64 `json:"year"`
+		TotalAgents      int     `json:"totalAgents"`
+		TotalCultivators int     `json:"totalCultivators"`
+		TotalMortals     float64 `json:"totalMortals"`
+		AvgQi            float64 `json:"avgQi"`
+		AvgAge           float64 `json:"avgAge"`
+		AvgCP            float64 `json:"avgCP"`
+		Deaths           int     `json:"deaths"`
+		Breakthroughs    int     `json:"breakthroughs"`
 	}
 	history := make([]HistoryPoint, 0)
 	for _, dp := range d.world.Stats.Snapshots {
@@ -1017,29 +1047,26 @@ func realmNameForLevel(level int) string {
 	return "未知"
 }
 
-func cultivationSectNames() []string {
-	return []string{"宗门1", "宗门2", "宗门3", "宗门4", "宗门5", "宗门6", "宗门7"}
-}
-
-var cultivationSectTraits = []struct {
-	Style string
-}{
-	{Style: "开山"},
-	{Style: "战修"},
-	{Style: "丹鼎"},
-	{Style: "隐峰"},
-	{Style: "外门"},
-	{Style: "霸道"},
-	{Style: "清修"},
-}
-
 func buildSectStats(agents *engine.AgentStore, sectNames []string) []SectStatData {
 	stats := make([]SectStatData, len(sectNames))
 	index := make(map[string]int, len(sectNames))
+	traits := cultivation.SectTraits()
+	sitesByName := make(map[string]cultivation.SectSite)
+	for _, site := range cultivation.SectSites() {
+		sitesByName[site.Name] = site
+	}
 	for i, name := range sectNames {
 		stats[i].Name = name
-		if i < len(cultivationSectTraits) {
-			stats[i].Trait = cultivationSectTraits[i].Style
+		if i < len(traits) {
+			stats[i].Trait = traits[i].Style
+		}
+		if site, ok := sitesByName[name]; ok {
+			stats[i].Trait = site.Style
+			stats[i].SiteX = site.X
+			stats[i].SiteY = site.Y
+			stats[i].Radius = site.Radius
+			stats[i].FoundedTick = site.FoundedTick
+			stats[i].Deaths = site.Deaths
 		}
 		index[name] = i
 	}
@@ -1068,4 +1095,27 @@ func buildSectStats(agents *engine.AgentStore, sectNames []string) []SectStatDat
 		}
 	}
 	return stats
+}
+
+func buildSectSites(stats []SectStatData) []SectSiteInfo {
+	countByName := make(map[string]int, len(stats))
+	for _, stat := range stats {
+		countByName[stat.Name] = stat.Count
+	}
+
+	sites := cultivation.SectSites()
+	out := make([]SectSiteInfo, 0, len(sites))
+	for _, site := range sites {
+		out = append(out, SectSiteInfo{
+			Name:        site.Name,
+			Trait:       site.Style,
+			X:           site.X,
+			Y:           site.Y,
+			Radius:      site.Radius,
+			FoundedTick: site.FoundedTick,
+			Deaths:      site.Deaths,
+			Count:       countByName[site.Name],
+		})
+	}
+	return out
 }

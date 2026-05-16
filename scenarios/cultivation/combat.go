@@ -66,6 +66,7 @@ func (s *CombatSystem) Tick(w *engine.World) {
 			loserID := agents.ID[loser]
 			agents.Kill(loser)
 			w.Stats.RecordDeath()
+			recordSectCandidateDeath(loserX, loserY)
 			eventTick := w.Clock.Tick + 1
 			w.Stats.RecordNotableEvent(engine.NotableEvent{
 				Tick:    eventTick,

@@ -402,6 +402,14 @@
                 margin-top: 6px;
                 height: 6px;
             }
+            .sect-card .sect-meta {
+                display: flex;
+                justify-content: space-between;
+                gap: 8px;
+                margin-top: 5px;
+                font-size: 10px;
+                color: var(--text2);
+            }
 
             /* Tracked Cards */
             .tracked-card {
@@ -573,6 +581,10 @@
                                 checked
                             />
                             修士</label
+                        >
+                        <label
+                            ><input type="checkbox" id="ol-sects" checked />
+                            宗门</label
                         >
                     </div>
                     <div class="overlay-row" id="realm-filters">
@@ -804,6 +816,7 @@
             let gViewMode = SPIRIT_HEAT;
             let gShowFeatures = true;
             let gShowCultivators = true;
+            let gShowSects = true;
             let gRealmVisible = [false, false, true, true, true, true];
             let gHoveredAgent = null;
             let gCanvasScale = 1;
@@ -956,6 +969,64 @@
                 return gShowCultivators && isRealmVisible(c);
             }
 
+            function getSectNames(snapshot = gState) {
+                if (snapshot && snapshot.sectNames && snapshot.sectNames.length)
+                    return snapshot.sectNames;
+                return SECT_NAMES;
+            }
+
+            function sectColor(idx) {
+                return SECT_COLORS[idx % SECT_COLORS.length];
+            }
+
+            function drawSectSites(snapshot) {
+                const sites = snapshot.sectSites || [];
+                if (!gShowSects || !sites.length) return;
+                ctx.save();
+                for (let i = 0; i < sites.length; i++) {
+                    const site = sites[i];
+                    const { cx, cy } = gridToCanvas(site.x, site.y);
+                    const radius = Math.max(
+                        5,
+                        (site.radius / 5) * gCanvasScale,
+                    );
+                    const color = sectColor(i);
+
+                    ctx.globalAlpha = 0.14;
+                    ctx.fillStyle = color;
+                    ctx.beginPath();
+                    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    ctx.globalAlpha = 0.85;
+                    ctx.strokeStyle = color;
+                    ctx.lineWidth = Math.max(1.5, gCanvasScale * 0.55);
+                    ctx.beginPath();
+                    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+                    ctx.stroke();
+
+                    ctx.globalAlpha = 1;
+                    ctx.font = `${Math.max(10, gCanvasScale * 2)}px sans-serif`;
+                    ctx.textAlign = "center";
+                    ctx.fillStyle = color;
+                    ctx.fillText(
+                        `${site.name} ${site.count || 0}`,
+                        cx,
+                        cy + radius + 12,
+                    );
+                }
+                ctx.restore();
+            }
+
+            function drawSectRing(c, cx, cy, size, extra = 1.5) {
+                if (!gShowSects || c.si < 0) return;
+                ctx.beginPath();
+                ctx.arc(cx, cy, size + extra, 0, Math.PI * 2);
+                ctx.strokeStyle = sectColor(c.si);
+                ctx.lineWidth = Math.max(1, gCanvasScale * 0.35);
+                ctx.stroke();
+            }
+
             function render(snapshot) {
                 gState = snapshot;
 
@@ -1026,6 +1097,8 @@
                     }
                 }
 
+                drawSectSites(snapshot);
+
                 // Draw cultivators
                 if (gShowCultivators && cultivators) {
                     // Tracked ID set for fast lookup
@@ -1049,6 +1122,7 @@
                         ctx.beginPath();
                         ctx.arc(cx, cy, size, 0, Math.PI * 2);
                         ctx.fill();
+                        drawSectRing(c, cx, cy, size);
                     }
 
                     // Draw tracked cultivators with glow
@@ -1080,6 +1154,8 @@
                         ctx.strokeStyle = "#fff";
                         ctx.lineWidth = 1.5;
                         ctx.stroke();
+
+                        drawSectRing(c, cx, cy, size, 3);
                     }
                 }
 
@@ -1173,6 +1249,10 @@
                     (sum, sect) => sum + (sect.count || 0),
                     0,
                 );
+                const sectSites = snapshot.sectSites || [];
+                const activeSects = (stats.sectStats || []).filter(
+                    (sect) => (sect.count || 0) > 0,
+                ).length;
                 let avgQiCap = 0;
                 for (let r = 1; r <= 5; r++) {
                     avgQiCap +=
@@ -1206,7 +1286,7 @@
       <div class="insight-item" style="border-left-color:var(--purple)">
         <div class="insight-label">宗门占比</div>
         <div class="insight-val">${formatPct(sectTotal, total)}</div>
-        <div class="insight-sub">散修 ${(total - sectTotal).toLocaleString()} 人</div>
+        <div class="insight-sub">${activeSects} 宗 · 宗址 ${sectSites.length} · 散修 ${(total - sectTotal).toLocaleString()}</div>
       </div>
       <div class="insight-item" style="border-left-color:var(--cyan)">
         <div class="insight-label">平均灵气充盈</div>
@@ -1242,12 +1322,21 @@
                         const pct = ((s.realmCounts[r] || 0) / total) * 100;
                         miniBars += `<span style="flex:${Math.max(pct, 0.5)};background:${REALM_COLORS[r]};border-radius:1px;min-width:2px;"></span>`;
                     }
+                    const siteText =
+                        s.radius > 0
+                            ? `宗址 (${s.siteX}, ${s.siteY}) · r${s.radius}`
+                            : "尚未形成宗址";
+                    const foundedText =
+                        s.foundedTick > 0
+                            ? `立宗 ${s.foundedTick} · 战死 ${s.deaths || 0}`
+                            : "历史宗门";
                     html += `<div class="sect-card" style="border-left-color:${SECT_COLORS[i % SECT_COLORS.length]}">
       <div class="sect-header">
         <span class="sect-name" style="color:${SECT_COLORS[i % SECT_COLORS.length]}">${s.name}</span>
         <span class="sect-trait">${s.trait || ""} · ${s.count}人</span>
       </div>
       <div class="sect-mini-bar">${miniBars}</div>
+      <div class="sect-meta"><span>${siteText}</span><span>${foundedText}</span></div>
       <div style="display:flex;justify-content:space-between;margin-top:4px;font-size:11px;color:var(--text2)">
         <span>战力值 ${s.combatValue.toFixed(0)}</span>
         <span>最高CP ${s.maxCP.toFixed(0)}</span>
@@ -1501,8 +1590,11 @@
                 if (nearest) {
                     const realmName = REALM_LEVEL_NAMES[nearest.r] || "未知";
                     const strategyName = STRATEGY_NAMES[nearest.st] || "—";
+                    const sectNames = getSectNames();
                     const sectName =
-                        nearest.si >= 0 ? SECT_NAMES[nearest.si] : "散修";
+                        nearest.si >= 0
+                            ? sectNames[nearest.si] || `宗门${nearest.si + 1}`
+                            : "散修";
                     const realmColor = REALM_COLORS[nearest.r] || "#888";
 
                     tt.style.display = "block";
@@ -1655,6 +1747,12 @@
                 .addEventListener("change", function () {
                     gShowCultivators = this.checked;
                     clearHeatmapCache();
+                    if (gState) render(gState);
+                });
+            document
+                .getElementById("ol-sects")
+                .addEventListener("change", function () {
+                    gShowSects = this.checked;
                     if (gState) render(gState);
                 });
             document.querySelectorAll(".ol-realm").forEach((input) => {

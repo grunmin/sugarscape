@@ -9,7 +9,7 @@ import (
 // Setup initializes the cultivation world scenario.
 func Setup(w *engine.World) {
 	cfg := DefaultScenarioConfig()
-	initializeSectWeights(w.RNG)
+	resetSectState()
 
 	// --- Initialize environment: spirit density ---
 	// Use multi-octave FBM noise instead of regular sine waves to produce
@@ -139,6 +139,7 @@ func Setup(w *engine.World) {
 	w.RegisterSystem(&MovementSystem{})
 	w.RegisterSystem(&InteractionSystem{})
 	w.RegisterSystem(&CombatSystem{})
+	w.RegisterSystem(&SectSystem{})
 	w.RegisterSystem(&LifecycleSystem{})
 }
 

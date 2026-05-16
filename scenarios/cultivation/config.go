@@ -74,13 +74,20 @@ type ScenarioConfig struct {
 	BreakthroughCD             int     // ticks of cooldown after failed breakthrough
 	JindanBreakFailDeathChance float64
 	// Sects
-	SectMembershipChance      float64
-	SectAllyCombatAssist      float64 // fraction of same-sect same-cell combat power counted in attack judgment
-	SectBreakthroughBonus     float64 // relative breakthrough probability bonus for sect cultivators
-	SectMentorBonusCap        float64 // max extra breakthrough multiplier from one-realm-higher sect mentors
-	SectMentorScale           float64 // saturation scale for one-realm-higher mentor count
-	SectRecruitBaseWeight     float64 // minimum recruit weight per sect to avoid permanent cold-start starvation
-	SectRecruitCombatExponent float64 // exponent applied to sect combat value during recruitment
+	LooseBreakthroughMultiplier        float64
+	SectAllyCombatAssist               float64 // fraction of same-sect same-cell combat power counted in attack judgment
+	SectBreakthroughBonus              float64 // relative breakthrough probability bonus for sect cultivators
+	SectMentorBonusCap                 float64 // max extra breakthrough multiplier from one-realm-higher sect mentors
+	SectMentorScale                    float64 // saturation scale for one-realm-higher mentor count
+	SectFormationCheckEvery            int
+	SectFormationRadius                int
+	SectFormationInfluenceRadius       int
+	SectFormationMinCultivators        int
+	SectFormationMinSustainTicks       int
+	SectFormationMinCombatDeaths       int
+	SectFormationMinSpiritMaxBonus     float64
+	SectFormationMinRegenBonus         float64
+	SectFormationExistingSectExclusion int
 	// Combat
 	CombatDeathChance    float64
 	CombatCostBase       float64 // fraction of opponent qi paid by winner in combat
@@ -139,13 +146,20 @@ func DefaultScenarioConfig() ScenarioConfig {
 		BreakthroughPostQiFrac:             0.25,
 		BreakthroughCD:                     100,
 		JindanBreakFailDeathChance:         0.30,
-		SectMembershipChance:               0.20,
+		LooseBreakthroughMultiplier:        0.65,
 		SectAllyCombatAssist:               0.25,
 		SectBreakthroughBonus:              0.30,
 		SectMentorBonusCap:                 0.50,
 		SectMentorScale:                    10,
-		SectRecruitBaseWeight:              40,
-		SectRecruitCombatExponent:          0.55,
+		SectFormationCheckEvery:            10,
+		SectFormationRadius:                18,
+		SectFormationInfluenceRadius:       36,
+		SectFormationMinCultivators:        35,
+		SectFormationMinSustainTicks:       80,
+		SectFormationMinCombatDeaths:       3,
+		SectFormationMinSpiritMaxBonus:     45,
+		SectFormationMinRegenBonus:         0.04,
+		SectFormationExistingSectExclusion: 72,
 		CombatDeathChance:                  0.3,
 		CombatCostBase:                     0.20,
 		CombatSelfMinCost:                  0.02,
